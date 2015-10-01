@@ -42,6 +42,7 @@ void kernel_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		"msr cpsr_c, r5" //switch to mode
 		: : : "r4", "r5");
 	
+	//set up exception vector
 	asm volatile(
 		"ldr r0, =ivt_start\n"
 		"mcr p15, 0, r0, c12, c0, 0"
@@ -58,3 +59,11 @@ uint32_t svc_entry(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
 	uart_puts("System call!\r\n");
 	return 0;
 }
+
+extern "C"
+void undef_instr_handler(uint32_t saved_pc){
+	uart_puts("Undefined instruction at ");
+	uart_puthex(saved_pc);
+	uart_puts("\r\n");
+}
+

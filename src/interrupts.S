@@ -16,6 +16,10 @@ reset_vec:
 	//should never be reached
 
 undef_vec:
+	push {lr}
+	sub r0, lr, #4
+	bl undef_instr_handler
+	pop {lr}
 	movs pc, lr
 	
 svc_vec:
@@ -25,15 +29,15 @@ svc_vec:
 	movs pc, lr
 
 prefetch_abort_vec:
-	movs pc, lr
+	subs pc, lr, #4
 
 data_abort_vec:
-	movs pc, lr
+	subs pc, lr, #8
 	
 irq_vec:
-	movs pc, lr
+	subs pc, lr, #4
 	
 fiq_vec:
-	movs pc, lr
+	subs pc, lr, #4
 	
 
