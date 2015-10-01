@@ -49,6 +49,14 @@ void kernel_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		: : : "r0");
 	
 	asm volatile("svc #0");
+	
+	uart_puts("Enabling interrupts\r\n");
+	
+	asm volatile(
+		"mrs r4, cpsr\n"
+		"bic r4, r4, #0xc0\n" //clear out interrupt bits
+		"msr cpsr_c, r4" //enable interrupts
+		: : : "r4");
  
 	while ( true )
 		uart_putc(uart_getc());
@@ -65,5 +73,29 @@ void undef_instr_handler(uint32_t saved_pc){
 	uart_puts("Undefined instruction at ");
 	uart_puthex(saved_pc);
 	uart_puts("\r\n");
+}
+
+extern "C"
+void prefetch_abort_handler(uint32_t saved_pc){
+	uart_puts("Prefetch abort at ");
+	uart_puthex(saved_pc);
+	uart_puts("\r\n");
+}
+
+extern "C"
+void data_abort_handler(uint32_t saved_pc){
+	uart_puts("Data abort at ");
+	uart_puthex(saved_pc);
+	uart_puts("\r\n");
+}
+
+extern "C"
+void irq_handler(uint32_t saved_pc){
+	uart_puts("IRQ triggered\r\n");
+}
+
+extern "C"
+void fiq_handler(uint32_t saved_pc){
+	uart_puts("FIQ triggered\r\n");
 }
 

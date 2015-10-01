@@ -29,15 +29,29 @@ svc_vec:
 	movs pc, lr
 
 prefetch_abort_vec:
+	push {lr}
+	sub r0, lr, #4
+	bl prefetch_abort_handler
+	pop {lr}
 	subs pc, lr, #4
 
 data_abort_vec:
+	push {lr}
+	sub r0, lr, #8
+	bl data_abort_handler
+	pop {lr}
 	subs pc, lr, #8
 	
 irq_vec:
+	push {lr}
+	bl irq_handler
+	pop {lr}
 	subs pc, lr, #4
 	
 fiq_vec:
+	push {lr}
+	bl fiq_handler
+	pop {lr}
 	subs pc, lr, #4
 	
 
