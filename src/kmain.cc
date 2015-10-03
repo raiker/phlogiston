@@ -1,9 +1,8 @@
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-
+#include "common.h"
 #include "uart.h"
 #include "atags.h"
+#include "page_alloc.h"
+#include "panic.h"
   
 extern "C" /* Use C linkage for kernel_main. */
 void kernel_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
@@ -20,7 +19,13 @@ void kernel_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	uart_puthex((uint32_t)atags); uart_puts("\r\n");
 	uart_puthex(cpsr_saved); uart_puts("\r\n");
 	
-	debug_atags(atags);
+	atags::debug_atags(atags);
+	
+	MemRange system_memory = atags::get_mem_range(atags);
+	
+	if (system_memory.start != 0){
+		panic(PanicCodes::NonZeroBase);
+	}
 	
 	//set up stacks
 	asm volatile(
@@ -57,6 +62,8 @@ void kernel_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		"bic r4, r4, #0xc0\n" //clear out interrupt bits
 		"msr cpsr_c, r4" //enable interrupts
 		: : : "r4");
+	
+	page_alloc::init(system_memory.size);
  
 	while ( true )
 		uart_putc(uart_getc());

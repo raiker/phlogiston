@@ -1,8 +1,9 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#include "common.h"
 
-void debug_atags(void * base_ptr);
+namespace atags {
+	void debug_atags(void * base_ptr);
+	MemRange get_mem_range(void * base_ptr);
+}
 

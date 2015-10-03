@@ -16,6 +16,7 @@ reset_vec:
 	//should never be reached
 
 undef_vec:
+	//replace with attribute code
 	push {lr}
 	sub r0, lr, #4
 	bl undef_instr_handler

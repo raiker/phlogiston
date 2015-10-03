@@ -40,5 +40,7 @@ SECTIONS
     }
     . = ALIGN(4096); /* align to page size */
     __bss_end = .;
+    
+    __page_alloc_table_start = .;
     __end = .;
 }

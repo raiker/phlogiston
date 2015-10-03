@@ -1,6 +1,9 @@
 #include "atags.h"
 
 #include "uart.h"
+#include "panic.h"
+
+namespace atags {
 
 const uint32_t ATAG_NONE = 0x00000000;
 const uint32_t ATAG_CORE = 0x54410001;
@@ -82,3 +85,25 @@ void debug_atags(void * base_ptr){
 		tag_base += ctag->hdr.size;
 	}
 }
+
+MemRange get_mem_range(void * base_ptr){
+	uint32_t *tag_base = (uint32_t *)base_ptr;
+	
+	while (true){
+		atag * ctag = (atag*) tag_base;
+		
+		switch (ctag->hdr.tag){
+			case ATAG_NONE:
+				panic(PanicCodes::NoMemory);
+			case ATAG_MEM:
+				return MemRange {start: ctag->mem.start, size: ctag->mem.size};
+			default:
+				break;
+		}
+		
+		tag_base += ctag->hdr.size;
+	}
+}
+
+}
+
