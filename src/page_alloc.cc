@@ -1,3 +1,5 @@
+#include <atomic>
+
 #include "page_alloc.h"
 
 #include "panic.h"
@@ -12,6 +14,8 @@ namespace page_alloc {
 	uint32_t num_pages;
 	uint32_t allocated_pages = 0;
 	refcount_t * refcount_table;
+	
+	std::atomic_flag spinlock_flag;
 
 	void init(uint32_t total_memory){
 		uart_puts("Initialising page allocator\r\n");
@@ -46,7 +50,8 @@ namespace page_alloc {
 	//may need optimisation
 	uintptr_t alloc() {
 		//enter critical section
-		asm volatile("cpsid aif");
+		while (spinlock_flag.test_and_set(std::memory_order_acquire))
+			;
 		
 		static uint32_t next_alloc = 0;
 		
@@ -72,14 +77,15 @@ namespace page_alloc {
 		next_alloc = entry;
 		
 		//exit critical section
-		asm volatile("cpsie aif");
+		spinlock_flag.clear(std::memory_order_release);
 		
 		return retval;
 	}
 	
 	uint32_t ref_acquire(uintptr_t page){
 		//enter critical section
-		asm volatile("cpsid aif");
+		while (spinlock_flag.test_and_set(std::memory_order_acquire))
+			;
 		
 		uint32_t retval = 0;
 		
@@ -92,14 +98,15 @@ namespace page_alloc {
 		}
 
 		//exit critical section
-		asm volatile("cpsie aif");
+		spinlock_flag.clear(std::memory_order_release);
 		
 		return retval;
 	}
 	
 	uint32_t ref_release(uintptr_t page){
 		//enter critical section
-		asm volatile("cpsid aif");
+		while (spinlock_flag.test_and_set(std::memory_order_acquire))
+			;
 		
 		uint32_t retval = 0;
 		
@@ -116,7 +123,7 @@ namespace page_alloc {
 		}
 
 		//exit critical section
-		asm volatile("cpsie aif");
+		spinlock_flag.clear(std::memory_order_release);
 		
 		return retval;
 	}

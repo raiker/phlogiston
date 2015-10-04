@@ -1,4 +1,4 @@
-CXXFLAGS="-fno-exceptions -g -std=c++14 -O1 -Wall -Wextra"
+CXXFLAGS="-fno-exceptions -g -std=c++17 -O3 -Wall -Wextra"
 arm-none-eabi-g++ -mcpu=arm1176jzf-s -fpic -ffreestanding -c boot.S -o boot.o
 arm-none-eabi-g++ -mcpu=arm1176jzf-s -fpic -ffreestanding -c interrupts.S -o interrupts.o
 arm-none-eabi-g++ -mcpu=arm1176jzf-s -fpic -ffreestanding $CXXFLAGS -c kmain.cc -o kmain.o
