@@ -10,6 +10,6 @@ arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c atags.cc -o atags.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c utility.cc -o utility.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c page_alloc.cc -o page_alloc.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c panic.cc -o panic.o
-arm-none-eabi-g++ -g -T link.ld -o phlogiston.elf -fpic -ffreestanding -O2 boot.o interrupts.o utility.o mmio.o uart.o atags.o page_alloc.o panic.o kmain.o -nostdlib -lgcc
+arm-none-eabi-g++ -g -T link.ld -o phlogiston.elf -flto -fpic -ffreestanding -O2 boot.o interrupts.o utility.o mmio.o uart.o atags.o page_alloc.o panic.o kmain.o -nostdlib -lgcc
 arm-none-eabi-objcopy phlogiston.elf -O binary phlogiston.bin
 arm-none-eabi-objcopy --only-keep-debug phlogiston.elf phlogiston.sym
