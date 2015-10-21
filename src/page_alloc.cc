@@ -82,6 +82,54 @@ namespace page_alloc {
 		return retval;
 	}
 	
+	//may need optimisation
+	uintptr_t alloc_section() {
+		//sections are 256 pages (1MiB) of memory, aligned to 1MiB
+		
+		//enter critical section
+		while (spinlock_flag.test_and_set(std::memory_order_acquire))
+			;
+		
+		static uint32_t next_alloc = 0;
+		
+		uint32_t entry = next_alloc;
+		uintptr_t retval = 0;
+		do {
+			bool all_refcounts_zero = true;
+			
+			for (uint32_t i = 0; i < PAGES_IN_SECTION; i++) {
+				if (refcount_table[entry+i] != 0) {
+					all_refcounts_zero = false;
+				}
+			}
+			
+			if (all_refcounts_zero) {
+				//use this section
+				for (uint32_t i = 0; i < PAGES_IN_SECTION; i++) {
+					refcount_table[entry+i] = 1;
+				}
+				retval = entry * PAGE_SIZE;
+				allocated_pages += PAGES_IN_SECTION;
+			}
+			entry += PAGES_IN_SECTION;
+			
+			if (entry >= num_pages){
+				entry -= num_pages;
+			}
+			
+			if (entry == next_alloc){
+				panic(PanicCodes::OutOfMemory); //give up
+			}
+		} while (retval == 0);
+		
+		next_alloc = entry;
+		
+		//exit critical section
+		spinlock_flag.clear(std::memory_order_release);
+		
+		return retval;
+	}
+	
 	uint32_t ref_acquire(uintptr_t page){
 		//enter critical section
 		while (spinlock_flag.test_and_set(std::memory_order_acquire))

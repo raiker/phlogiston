@@ -11,6 +11,7 @@ enum PanicCodes {
 	TooManyReferences,
 	NoMemory,
 	NonZeroBase,
+	AssertionFailure,
 };
 
 void panic(PanicCodes code) __attribute__((noreturn));

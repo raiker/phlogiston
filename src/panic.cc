@@ -32,6 +32,9 @@ void panic(PanicCodes code){
 		case PanicCodes::NonZeroBase:
 			msg = "System RAM not based at address 0";
 			break;
+		case PanicCodes::AssertionFailure:
+			msg = "Assertion failure";
+			break;
 		default:
 			msg = "Unknown error";
 			break;

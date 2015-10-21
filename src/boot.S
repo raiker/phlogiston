@@ -34,8 +34,8 @@ _start:
 	
 	mrs r3, cpsr
  
-	// Call kernel_main
-	ldr r4, =kernel_main
+	// Call loader_main
+	ldr r4, =loader_main
 	blx r4
  
 	// halt

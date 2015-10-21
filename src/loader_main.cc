@@ -5,7 +5,7 @@
 #include "panic.h"
   
 extern "C" /* Use C linkage for kernel_main. */
-void kernel_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
+void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 {
 	//(void) r0;
 	//(void) r1;

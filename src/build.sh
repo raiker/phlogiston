@@ -1,15 +1,24 @@
 ASMFLAGS="-mcpu=arm1176jzf-s -fpic -ffreestanding"
 CXXFLAGS="-fno-exceptions -g -std=c++17 -O3 -Wall -Wextra"
 
-arm-none-eabi-g++ $ASMFLAGS -c boot.S -o boot.o
-arm-none-eabi-g++ $ASMFLAGS -c interrupts.S -o interrupts.o
-arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c kmain.cc -o kmain.o
-arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c mmio.cc -o mmio.o
-arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c uart.cc -o uart.o
-arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c atags.cc -o atags.o
-arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c utility.cc -o utility.o
-arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c page_alloc.cc -o page_alloc.o
-arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c panic.cc -o panic.o
-arm-none-eabi-g++ -g -T link.ld -o phlogiston.elf -flto -fpic -ffreestanding -O2 boot.o interrupts.o utility.o mmio.o uart.o atags.o page_alloc.o panic.o kmain.o -nostdlib -lgcc
-arm-none-eabi-objcopy phlogiston.elf -O binary phlogiston.bin
-arm-none-eabi-objcopy --only-keep-debug phlogiston.elf phlogiston.sym
+arm-none-eabi-g++ $ASMFLAGS -c boot.S -o build/boot.o
+arm-none-eabi-g++ $ASMFLAGS -c interrupts.S -o build/interrupts.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c loader_main.cc -o build/loader_main.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c mmio.cc -o build/mmio.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c uart.cc -o build/uart.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c atags.cc -o build/atags.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c utility.cc -o build/utility.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c page_alloc.cc -o build/page_alloc.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c panic.cc -o build/panic.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c kernel_entry.cc -o build/kernel_entry.o
+
+arm-none-eabi-g++ -g -T phlogiston_link.ld -o kernel.elf -flto -fpic -ffreestanding -O2 build/utility.o build/mmio.o build/uart.o build/panic.o build/kernel_entry.o -nostdlib -lgcc
+
+arm-none-eabi-objcopy --only-keep-debug kernel.elf kernel.sym
+arm-none-eabi-objcopy -S kernel.elf kernel-stripped.elf
+arm-none-eabi-objcopy -I binary -O elf32-littlearm -B arm kernel-stripped.elf kernel-binary.o
+
+arm-none-eabi-g++ -g -T loader_link.ld -o loader.elf -flto -fpic -ffreestanding -O2 build/boot.o build/interrupts.o build/utility.o build/mmio.o build/uart.o build/atags.o build/page_alloc.o build/panic.o build/loader_main.o kernel-binary.o -nostdlib -lgcc
+
+arm-none-eabi-objcopy loader.elf -O binary phlogiston.bin
+
