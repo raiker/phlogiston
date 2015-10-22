@@ -10,6 +10,7 @@ arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c atags.cc -o build/atags.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c utility.cc -o build/utility.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c page_alloc.cc -o build/page_alloc.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c panic.cc -o build/panic.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c elf_loader.cc -o build/elf_loader.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c kernel_entry.cc -o build/kernel_entry.o
 
 arm-none-eabi-g++ -g -T phlogiston_link.ld -o kernel.elf -flto -fpic -ffreestanding -O2 build/utility.o build/mmio.o build/uart.o build/panic.o build/kernel_entry.o -nostdlib -lgcc
@@ -18,7 +19,7 @@ arm-none-eabi-objcopy --only-keep-debug kernel.elf kernel.sym
 arm-none-eabi-objcopy -S kernel.elf kernel-stripped.elf
 arm-none-eabi-objcopy -I binary -O elf32-littlearm -B arm kernel-stripped.elf kernel-binary.o
 
-arm-none-eabi-g++ -g -T loader_link.ld -o loader.elf -flto -fpic -ffreestanding -O2 build/boot.o build/interrupts.o build/utility.o build/mmio.o build/uart.o build/atags.o build/page_alloc.o build/panic.o build/loader_main.o kernel-binary.o -nostdlib -lgcc
+arm-none-eabi-g++ -g -T loader_link.ld -o loader.elf -flto -fpic -ffreestanding -O2 build/boot.o build/interrupts.o build/utility.o build/mmio.o build/uart.o build/atags.o build/page_alloc.o build/panic.o build/elf_loader.o build/loader_main.o kernel-binary.o -nostdlib -lgcc
 
 arm-none-eabi-objcopy loader.elf -O binary phlogiston.bin
 

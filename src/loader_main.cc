@@ -3,6 +3,9 @@
 #include "atags.h"
 #include "page_alloc.h"
 #include "panic.h"
+#include "elf_loader.h"
+
+extern uint32_t _binary_kernel_stripped_elf_start;
   
 extern "C" /* Use C linkage for kernel_main. */
 void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
@@ -64,6 +67,8 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		: : : "r4");
 	
 	page_alloc::init(system_memory.size);
+	
+	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
  
 	while ( true )
 		uart_putc(uart_getc());

@@ -3,7 +3,7 @@ ENTRY(kernel_entry)
 SECTIONS
 {
     /* Higher-half kernel */
-    . = 0x8000000;
+    . = 0x80000000;
     __start = .;
     __text_start = .;
     .text :
