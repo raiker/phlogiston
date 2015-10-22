@@ -46,58 +46,34 @@ namespace page_alloc {
 		uart_puts("allocated_pages = "); uart_puthex(allocated_pages); uart_puts("\r\n");
 		uart_puts("\r\n");
 	}
-
-	//may need optimisation
-	uintptr_t alloc() {
-		//enter critical section
-		while (spinlock_flag.test_and_set(std::memory_order_acquire))
-			;
-		
-		static uint32_t next_alloc = 0;
-		
-		uint32_t entry = next_alloc;
-		uintptr_t retval = 0;
-		do {
-			if (refcount_table[entry] == 0) {
-				//use this page
-				refcount_table[entry] = 1;
-				retval = entry * PAGE_SIZE;
-				allocated_pages++;
-			}
-			entry++;
-			if (entry >= num_pages){
-				entry -= num_pages;
-			}
-			
-			if (entry == next_alloc){
-				panic(PanicCodes::OutOfMemory); //give up
-			}
-		} while (retval == 0);
-		
-		next_alloc = entry;
-		
-		//exit critical section
-		spinlock_flag.clear(std::memory_order_release);
-		
-		return retval;
-	}
 	
 	//may need optimisation
-	uintptr_t alloc_section() {
+	uintptr_t alloc(uint32_t size) {
+		//supports size = {1,4,256}
+		//pages are 1 page (4KiB) of memory, aligned to 4KiB
+		//pagetables are 4 pages (16KiB) of memory, aligned to 16KiB
 		//sections are 256 pages (1MiB) of memory, aligned to 1MiB
+		
+		if (size != 1 && size != 4 && size != 256) {
+			panic(PanicCodes::IncompatibleParameter);
+		}
 		
 		//enter critical section
 		while (spinlock_flag.test_and_set(std::memory_order_acquire))
 			;
 		
-		static uint32_t next_alloc = 0;
+		static uint32_t next_alloc_1 = 0; //page
+		static uint32_t next_alloc_4 = 0; //pagetable
+		static uint32_t next_alloc_256 = 0; //section
+		
+		uint32_t &next_alloc = (size == 1) ? next_alloc_1 : (size == 4) ? next_alloc_4 : next_alloc_256;
 		
 		uint32_t entry = next_alloc;
 		uintptr_t retval = 0;
 		do {
 			bool all_refcounts_zero = true;
 			
-			for (uint32_t i = 0; i < PAGES_IN_SECTION; i++) {
+			for (uint32_t i = 0; i < size; i++) {
 				if (refcount_table[entry+i] != 0) {
 					all_refcounts_zero = false;
 				}
@@ -105,13 +81,13 @@ namespace page_alloc {
 			
 			if (all_refcounts_zero) {
 				//use this section
-				for (uint32_t i = 0; i < PAGES_IN_SECTION; i++) {
+				for (uint32_t i = 0; i < size; i++) {
 					refcount_table[entry+i] = 1;
 				}
 				retval = entry * PAGE_SIZE;
-				allocated_pages += PAGES_IN_SECTION;
+				allocated_pages += size;
 			}
-			entry += PAGES_IN_SECTION;
+			entry += size;
 			
 			if (entry >= num_pages){
 				entry -= num_pages;
