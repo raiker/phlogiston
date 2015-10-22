@@ -3,7 +3,10 @@
 #include "common.h"
 
 class PageTable {
-	int x;
+	uint32_t (* first_level_pa)[]; //physical address
+	
+	PageTable();
+	~PageTable();
 };
 
 

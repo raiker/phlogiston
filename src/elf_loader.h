@@ -1,6 +1,7 @@
 #pragma once
 
+#include "pagetable.h"
 #include "common.h"
 
-void elf_parse_header(void * header);
+void load_elf(void * header, PageTable & pagetable);
 
