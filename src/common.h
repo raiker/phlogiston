@@ -13,4 +13,28 @@ struct MemRange {
 	uintptr_t start, size;
 };
 
+template<class T>
+class Result {
+protected:
+	Result() :
+		success(false)
+	{ }
+	
+	Result(T val) :
+		success(true), value(val)
+	{ }
+	
+public:
+	bool success;
+	T value;
+	
+	static Result success(T val) {
+		return Result(val);
+	}
+	
+	static Result failure() {
+		return Result();
+	}
+}
+
 
