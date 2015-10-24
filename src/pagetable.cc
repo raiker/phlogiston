@@ -1,12 +1,18 @@
 #include "pagetable.h"
 #include "page_alloc.h"
 
-const uint32_t NUM_ENTRIES = 4096;
-
-PrePagingPageTable() {
-	first_level_table = (*uint32_t)page_alloc::alloc(4); //4 pages for a first-level translation table
+PrePagingPageTable::PrePagingPageTable(bool is_supervisor) {
+	if (is_supervisor){
+		//supervisor (4k entries)
+		first_level_table = (*uint32_t)page_alloc::alloc(4); //4 pages
+		first_level_num_entries = FIRST_LEVEL_SUPERVISOR_ENTRIES;
+	} else {
+		//user (2k entries)
+		first_level_table = (*uint32_t)page_alloc::alloc(2); //2 pages
+		first_level_num_entries = FIRST_LEVEL_USER_ENTRIES;
+	}
 	
-	for (uint32_t i = 0; i < NUM_ENTRIES; i++){
+	for (uint32_t i = 0; i < first_level_num_entries; i++){
 		first_level_table[i] = 0x00000000;
 	}
 	
@@ -17,7 +23,7 @@ PrePagingPageTable() {
 	}*/
 }
 
-PrePagingPageTable::~PageTable() {
+PrePagingPageTable::~PrePagingPageTable() {
 	/*//free any second level tables that might have been allocated
 	for (uint32_t i = 0; i < MAX_SECOND_LEVEL_TABLES; i++){
 		if (second_level_table_addrs[i].physical_addr != 0x00000000){
@@ -37,6 +43,11 @@ PrePagingPageTable::~PageTable() {
 Result<uintptr_t> PrePagingPageTable::virtual_to_physical(uintptr_t virtual_address) {
 	//see if the address is mapped
 	uint32_t first_level_index = virtual_address >> 20;
+	
+	if (first_level_index >= first_level_num_entries) {
+		return Result<uintptr_t>::failure();
+	}
+	
 	uint32_t & first_level_entry = first_level_table[first_level_index];
 	
 	switch (first_level_entry & 0x3) {
@@ -78,5 +89,54 @@ Result<uintptr_t> PrePagingPageTable::virtual_to_physical(uintptr_t virtual_addr
 
 Result<uintptr_t> PrePagingPageTable::physical_to_virtual(uintptr_t physical_address) {
 	//very slow, avoid if possible
+	//requires iterating through all the first- and second-level page table entries
+	//returns only the first virtual mapping that matches the target
+	for (uint32_t i = 0; i < first_level_num_entries; i++){
+		uint32_t & first_level_entry = first_level_table[i];
+		
+		switch (first_level_entry & 0x3) {
+			case 1:
+				//second-level table
+				{
+					uint32_t * second_level_table = (uint32 *)(first_level_entry & 0xfffffc00);
+					
+					for (uint32_t j = 0; j < SECOND_LEVEL_ENTRIES; j++) {
+						uint32_t & second_level_entry = second_level_table[j];
+						
+						if (second_level_entry & 0x2) {
+							//page is committed
+							if ((second_level_entry & 0xfffff000) == (physical_address & 0xfffff000)){
+								//match
+								uintptr_t address = (first_level_entry & 0xfffff000) | (physical_address & 0x00000fff);
+								return Result<uintptr_t>::success(address);
+							}
+						}
+					}
+				}
+				break;
+			case 2:
+				//section or supersection
+				if (first_level_entry & (1<<18)){
+					//supersection
+					if ((first_level_entry & 0xff000000) == (physical_address & 0xff000000)){
+						//match
+						uintptr_t address = (first_level_entry & 0xff000000) | (physical_address & 0x00ffffff);
+						return Result<uintptr_t>::success(address);
+					}
+				} else {
+					//regular section
+					if ((first_level_entry & 0xfff00000) == (physical_address & 0xfff00000)){
+						//match
+						uintptr_t address = (first_level_entry & 0xfff00000) | (physical_address & 0x000fffff);
+						return Result<uintptr_t>::success(address);
+					}
+				}
+				break;
+			default:
+				//memory is not currently committed
+		}
+	}
+	
+	return Result<uintptr_t>::failure();
 }
 
