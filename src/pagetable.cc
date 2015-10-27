@@ -4,17 +4,23 @@
 PrePagingPageTable::PrePagingPageTable(bool is_supervisor) {
 	if (is_supervisor){
 		//supervisor (4k entries)
-		first_level_table = (*uint32_t)page_alloc::alloc(4); //4 pages
+		first_level_table = (uint32_t*)page_alloc::alloc(4); //4 pages
 		first_level_num_entries = FIRST_LEVEL_SUPERVISOR_ENTRIES;
 	} else {
 		//user (2k entries)
-		first_level_table = (*uint32_t)page_alloc::alloc(2); //2 pages
+		first_level_table = (uint32_t*)page_alloc::alloc(2); //2 pages
 		first_level_num_entries = FIRST_LEVEL_USER_ENTRIES;
 	}
 	
 	for (uint32_t i = 0; i < first_level_num_entries; i++){
 		first_level_table[i] = 0x00000000;
 	}
+	
+	//allocate the page at 0x00000000 to catch null dereferences
+	uint32_t * second_level_table = (uint32_t*)page_alloc::alloc(1); //4 times as much space as we need...
+	first_level_table[0x000] = (uint32_t)second_level_table | 0x1 | (SUPERVISOR_DOMAIN << 5);
+	
+	second_level_table[0x00] = 0x00000000 | 0x3;
 	
 	/*second_level_table_addrs = (**SecondLevelTableAddr)page_alloc::alloc(1); //1 page for the addresses of the second level tables
 	
@@ -40,7 +46,24 @@ PrePagingPageTable::~PrePagingPageTable() {
 	}
 }
 
-Result<uintptr_t> PrePagingPageTable::virtual_to_physical(uintptr_t virtual_address) {
+uintptr_t PrePagingPageTable::allocate(size_t bytes, AllocationGranularity granularity) {
+	static uintptr_t next_alloc_page = 0x00000000;
+	static uintptr_t next_alloc_section = 0x00000000;
+	static uintptr_t next_alloc_supersection = 0x00000000;
+	
+	if (granularity != AllocationGranularity::Page &&
+		granularity != AllocationGranularity::Section &&
+		granularity != AllocationGranularity::Supersection)
+	{
+		panic(PanicCodes::IncompatibleParameter);
+	}
+	
+	auto lock = spinlock_cs.acquire();
+	
+	
+}
+
+Result<uintptr_t> PrePagingPageTable::virtual_to_physical_internal(uintptr_t virtual_address) {
 	//see if the address is mapped
 	uint32_t first_level_index = virtual_address >> 20;
 	
@@ -87,7 +110,7 @@ Result<uintptr_t> PrePagingPageTable::virtual_to_physical(uintptr_t virtual_addr
 	}
 }
 
-Result<uintptr_t> PrePagingPageTable::physical_to_virtual(uintptr_t physical_address) {
+Result<uintptr_t> PrePagingPageTable::physical_to_virtual_internal(uintptr_t physical_address) {
 	//very slow, avoid if possible
 	//requires iterating through all the first- and second-level page table entries
 	//returns only the first virtual mapping that matches the target
@@ -138,5 +161,17 @@ Result<uintptr_t> PrePagingPageTable::physical_to_virtual(uintptr_t physical_add
 	}
 	
 	return Result<uintptr_t>::failure();
+}
+
+Result<uintptr_t> PrePagingPageTable::virtual_to_physical(uintptr_t virtual_address) {
+	auto lock = spinlock_cs.acquire();
+	
+	return virtual_to_physical_internal(virtual_address);
+}
+
+Result<uintptr_t> PrePagingPageTable::physical_to_virtual(uintptr_t physical_address) {
+	auto lock = spinlock_cs.acquire();
+	
+	return physical_to_virtual_internal(physical_address);
 }
 

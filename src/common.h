@@ -17,15 +17,15 @@ template<class T>
 class Result {
 protected:
 	Result() :
-		success(false)
+		is_success(false)
 	{ }
 	
 	Result(T val) :
-		success(true), value(val)
+		is_success(true), value(val)
 	{ }
 	
 public:
-	bool success;
+	bool is_success;
 	T value;
 	
 	static Result success(T val) {
@@ -35,6 +35,6 @@ public:
 	static Result failure() {
 		return Result();
 	}
-}
+};
 
 

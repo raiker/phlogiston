@@ -68,6 +68,24 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	page_alloc::init(system_memory.size);
 	
+	/*page_alloc::MemStats stats = page_alloc::get_mem_stats();
+	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_puts("\r\n");
+	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_puts("\r\n");
+	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_puts("\r\n");
+	
+	uintptr_t a1 = page_alloc::alloc(1);
+	uintptr_t a2 = page_alloc::alloc(4);
+	uintptr_t a3 = page_alloc::alloc(256);
+	
+	uart_puthex(a1); uart_puts("\r\n");
+	uart_puthex(a2); uart_puts("\r\n");
+	uart_puthex(a3); uart_puts("\r\n");
+	
+	stats = page_alloc::get_mem_stats();
+	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_puts("\r\n");
+	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_puts("\r\n");
+	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_puts("\r\n");*/
+	
 	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
  
 	while ( true )
