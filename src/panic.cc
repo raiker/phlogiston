@@ -40,6 +40,7 @@ void panic(PanicCodes code){
 			break;
 	}
 	
+	uart_puts(": ");
 	uart_puts(msg);
 	uart_puts("\r\n");
 	

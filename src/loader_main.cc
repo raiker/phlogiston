@@ -68,6 +68,30 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	page_alloc::init(system_memory.size);
 	
+	/*page_alloc::MemStats stats = page_alloc::get_mem_stats();
+	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_puts("\r\n");
+	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_puts("\r\n");
+	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_puts("\r\n");
+	
+	uintptr_t a1 = page_alloc::alloc(1);
+	uintptr_t a2 = page_alloc::alloc(4);
+	uintptr_t a3 = page_alloc::alloc(256);
+	
+	uart_puthex(a1); uart_puts("\r\n");
+	uart_puthex(a2); uart_puts("\r\n");
+	uart_puthex(a3); uart_puts("\r\n");
+	
+	stats = page_alloc::get_mem_stats();
+	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_puts("\r\n");
+	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_puts("\r\n");
+	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_puts("\r\n");*/
+	
+	/*for (uint32_t i = 0; i < 10000000; i++){
+		uart_puthex(i);
+		uart_puts("\r\n");
+		page_alloc::alloc(256);
+	}*/
+	
 	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
  
 	while ( true )
@@ -77,6 +101,10 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 extern "C"
 uint32_t svc_entry(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
 	uart_puts("System call!\r\n");
+	uart_puts("a: "); uart_puthex(a); uart_puts("\r\n");
+	uart_puts("b: "); uart_puthex(b); uart_puts("\r\n");
+	uart_puts("c: "); uart_puthex(c); uart_puts("\r\n");
+	uart_puts("d: "); uart_puthex(d); uart_puts("\r\n");
 	return 0;
 }
 
@@ -102,12 +130,12 @@ void data_abort_handler(uint32_t saved_pc){
 }
 
 extern "C"
-void irq_handler(uint32_t saved_pc){
+void irq_handler(){
 	uart_puts("IRQ triggered\r\n");
 }
 
 extern "C"
-void fiq_handler(uint32_t saved_pc){
+void fiq_handler(){
 	uart_puts("FIQ triggered\r\n");
 }
 

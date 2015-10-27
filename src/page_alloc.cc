@@ -1,7 +1,6 @@
-#include <atomic>
-
 #include "page_alloc.h"
 
+#include "spinlock.h"
 #include "panic.h"
 #include "uart.h"
 
@@ -15,7 +14,7 @@ namespace page_alloc {
 	uint32_t allocated_pages = 0;
 	refcount_t * refcount_table;
 	
-	std::atomic_flag spinlock_flag;
+	Spinlock spinlock_cs;
 
 	void init(uint32_t total_memory){
 		uart_puts("Initialising page allocator\r\n");
@@ -47,6 +46,18 @@ namespace page_alloc {
 		uart_puts("\r\n");
 	}
 	
+	MemStats get_mem_stats() {
+		auto lock = spinlock_cs.acquire();
+		
+		MemStats retval;
+		
+		retval.totalmem = num_pages * PAGE_SIZE;
+		retval.usedmem = allocated_pages * PAGE_SIZE;
+		retval.freemem = retval.totalmem - retval.usedmem;
+		
+		return retval;
+	}
+	
 	//may need optimisation
 	uintptr_t alloc(uint32_t size) {
 		//supports size = {1,4,256}
@@ -59,8 +70,7 @@ namespace page_alloc {
 		}
 		
 		//enter critical section
-		while (spinlock_flag.test_and_set(std::memory_order_acquire))
-			;
+		auto lock = spinlock_cs.acquire();
 		
 		static uint32_t next_alloc_1 = 0; //page
 		static uint32_t next_alloc_4 = 0; //pagetable
@@ -101,15 +111,14 @@ namespace page_alloc {
 		next_alloc = entry;
 		
 		//exit critical section
-		spinlock_flag.clear(std::memory_order_release);
+		//spinlock_flag.clear(std::memory_order_release);
 		
 		return retval;
 	}
 	
 	uint32_t ref_acquire(uintptr_t page){
 		//enter critical section
-		while (spinlock_flag.test_and_set(std::memory_order_acquire))
-			;
+		auto lock = spinlock_cs.acquire();
 		
 		uint32_t retval = 0;
 		
@@ -122,15 +131,14 @@ namespace page_alloc {
 		}
 
 		//exit critical section
-		spinlock_flag.clear(std::memory_order_release);
+		//spinlock_flag.clear(std::memory_order_release);
 		
 		return retval;
 	}
 	
 	uint32_t ref_release(uintptr_t page){
 		//enter critical section
-		while (spinlock_flag.test_and_set(std::memory_order_acquire))
-			;
+		auto lock = spinlock_cs.acquire();
 		
 		uint32_t retval = 0;
 		
@@ -147,7 +155,7 @@ namespace page_alloc {
 		}
 
 		//exit critical section
-		spinlock_flag.clear(std::memory_order_release);
+		//spinlock_flag.clear(std::memory_order_release);
 		
 		return retval;
 	}
