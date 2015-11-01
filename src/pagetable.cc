@@ -57,7 +57,7 @@ PrePagingPageTable::~PrePagingPageTable() {
 	//page_alloc::ref_release(second_level_table_addrs); //need physical address...*/
 	
 	uintptr_t page_base = (uintptr_t)first_level_table;
-	for (uint32_t i = 0; i < 4; i++){
+	for (uint32_t i = 0; i < first_level_num_entries / (PAGE_SIZE / sizeof(uint32_t)); i++){
 		page_alloc::ref_release(page_base + i * 0x1000); //decrement the reference counts on the four pages
 	}
 }
@@ -76,12 +76,24 @@ Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranulari
 	
 	auto lock = spinlock_cs.acquire();
 	
-	//TODO: use bytes
+	if (granularity == AllocationGranularity::Page && bytes >= (SECTION_SIZE / 2)){
+		granularity = AllocationGranularity::Section;
+	}
+	
+	if (bytes == 0){
+		return Result<uintptr_t>::failure();
+	}
 	
 	//slow, but packs fairly efficiently
 	if (granularity == AllocationGranularity::Page){
+		uint32_t num_pages = bytes / PAGE_SIZE + (bytes & (PAGE_SIZE-1) ? 1 : 0);
+		
+		//numpages is guaranteed to be <= 128
+		
 		//trawl through all the second-level page tables looking for a space
 		for (uint32_t i = 0; i < first_level_num_entries; i++){
+			uint32_t contiguous_free_pages = 0;
+			
 			uint32_t & first_level_entry = first_level_table[i];
 			if ((first_level_entry & 0x3) == 1){
 				//it's a second-level table
@@ -93,12 +105,21 @@ Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranulari
 					
 					if ((second_level_entry & 0x7) == 0x0){
 						//this page is usable
+						contiguous_free_pages++;
+					} else {
+						contiguous_free_pages = 0;
+					}
+					
+					if (contiguous_free_pages == num_pages){
+						//we have enough contiguous pages in this second-level table to complete the allocation
+						uint32_t start_index = j - num_pages + 1;
+						for (uint32_t k = start_index; k < start_index + num_pages; k++) {
+							//TODO: permissions bits
+							uint32_t base_addr = page_alloc::alloc(1);
+							second_level_table[k] = base_addr | 0x00000002;
+						}
 						
-						//TODO: permissions bits
-						uint32_t base_addr = page_alloc::alloc(1);
-						second_level_entry = base_addr | 0x00000002;
-						
-						return Result<uintptr_t>::success(i * SECTION_SIZE + j * PAGE_SIZE);
+						return Result<uintptr_t>::success(i * SECTION_SIZE + start_index * PAGE_SIZE);
 					}
 				}
 			}
@@ -115,34 +136,51 @@ Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranulari
 				uint32_t * second_level_table = create_second_level_table();
 				first_level_table[i] = (uint32_t)second_level_table | 0x1 | (SUPERVISOR_DOMAIN << 5);
 				
-				uint32_t base_addr = page_alloc::alloc(1);
-				second_level_table[0x00] = base_addr | 0x00000002;
+				for (uint32_t j = 0; j < num_pages; j++){
+					uint32_t base_addr = page_alloc::alloc(1);
+					second_level_table[j] = base_addr | 0x00000002;
+				}
 				
 				return Result<uintptr_t>::success(i * SECTION_SIZE);
 			}
 		}
 		
-		//if we get here, we have no address space left (i.e. it's all been reserved (or allocated... ^_^))
+		//if we get here, we have insufficient address space left (i.e. it's all been reserved (or allocated... ^_^))
 		return Result<uintptr_t>::failure();
 	} else if (granularity == AllocationGranularity::Section) {
 		//Section (1MiB)
+		uint32_t num_sections = bytes / SECTION_SIZE + (bytes & (SECTION_SIZE-1) ? 1 : 0);
+		uint32_t contiguous_free_sections = 0;
+		
 		for (uint32_t i = 0; i < first_level_num_entries; i++){
 			uint32_t & first_level_entry = first_level_table[i];
 			if ((first_level_entry & 0x7) == 0x0){
 				//it's an unreserved free section
+				contiguous_free_sections++;
+			} else {
+				contiguous_free_sections = 0;
+			}
+			
+			if (contiguous_free_sections == num_sections){
+				uint32_t start_index = i - num_sections + 1;
 				
-				//TODO: permissions bits
-				uint32_t base_addr = page_alloc::alloc(4);
-				first_level_entry = base_addr | 0x00000002;
+				for (uint32_t j = start_index; j < start_index + num_sections; j++){
+					//TODO: permissions bits
+					uint32_t base_addr = page_alloc::alloc(4);
+					first_level_table[j] = base_addr | 0x00000002;
+				}
 				
-				return Result<uintptr_t>::success(i * SECTION_SIZE);
+				return Result<uintptr_t>::success(start_index * SECTION_SIZE);
 			}
 		}
 		
-		//if we get here, we have no address space left (i.e. it's all been reserved (or allocated... ^_^))
+		//if we get here, we have insufficient address space left (i.e. it's all been reserved (or allocated... ^_^))
 		return Result<uintptr_t>::failure();
 	} else {
 		//Supersection (16 consecutive sections)
+		uint32_t num_supersections = bytes / SUPERSECTION_SIZE + (bytes & (SUPERSECTION_SIZE-1) ? 1 : 0);
+		uint32_t contiguous_free_supersections = 0;
+		
 		for (uint32_t i = 0; i < first_level_num_entries; i += 16){
 			bool all_sections_free = true;
 			for (uint32_t j = 0; j < 16; j++){
@@ -151,16 +189,24 @@ Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranulari
 			}
 			if (all_sections_free){
 				//we have 16 consecutive free sections
-				
-				//TODO: permissions bits
-				uint32_t base_addr = page_alloc::alloc(16);
-				uint32_t new_entry = base_addr | 0x00040002;
-				
-				for (uint32_t j = 0; j < 16; j++){
-					first_level_table[i+j] = new_entry;
+				contiguous_free_supersections++;
+			} else {
+				contiguous_free_supersections = 0;
+			}
+			
+			if (contiguous_free_supersections == num_supersections){
+				uint32_t start_index = i - 16 * (num_supersections - 1);
+				for (uint32_t k = start_index; k < start_index + (num_supersections * 16); k += 16){
+					//TODO: permissions bits
+					uint32_t base_addr = page_alloc::alloc(16);
+					uint32_t new_entry = base_addr | 0x00040002;
+					
+					for (uint32_t j = 0; j < 16; j++){
+						first_level_table[k+j] = new_entry;
+					}
 				}
 				
-				return Result<uintptr_t>::success(i * SECTION_SIZE);
+				return Result<uintptr_t>::success(start_index * SECTION_SIZE);
 			}
 		}
 		
@@ -169,7 +215,7 @@ Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranulari
 	}
 }
 
-Result<uintptr_t> PrePagingPageTable::virtual_to_physical_internal(uintptr_t virtual_address) {
+Result<uintptr_t> PageTableBase::virtual_to_physical_internal(uintptr_t virtual_address) {
 	//see if the address is mapped
 	uint32_t first_level_index = virtual_address >> 20;
 	
@@ -177,13 +223,13 @@ Result<uintptr_t> PrePagingPageTable::virtual_to_physical_internal(uintptr_t vir
 		return Result<uintptr_t>::failure();
 	}
 	
-	uint32_t & first_level_entry = first_level_table[first_level_index];
+	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
 	
 	switch (first_level_entry & 0x3) {
 		case 1:
 			//second-level table
 			{
-				uint32_t * second_level_table = (uint32_t *)(first_level_entry & 0xfffffc00);
+				uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
 				uint32_t second_level_index = (virtual_address >> 12) & 0xff;
 				
 				uint32_t & second_level_entry = second_level_table[second_level_index];
@@ -216,10 +262,12 @@ Result<uintptr_t> PrePagingPageTable::virtual_to_physical_internal(uintptr_t vir
 	}
 }
 
-Result<uintptr_t> PrePagingPageTable::physical_to_virtual_internal(uintptr_t physical_address) {
+Result<uintptr_t> PageTableBase::physical_to_virtual_internal(uintptr_t physical_address) {
 	//very slow, avoid if possible
 	//requires iterating through all the first- and second-level page table entries
 	//returns only the first virtual mapping that matches the target
+	uint32_t * first_level_table = get_first_level_table_address();
+	
 	for (uint32_t i = 0; i < first_level_num_entries; i++){
 		uint32_t & first_level_entry = first_level_table[i];
 		
@@ -227,7 +275,7 @@ Result<uintptr_t> PrePagingPageTable::physical_to_virtual_internal(uintptr_t phy
 			case 1:
 				//second-level table
 				{
-					uint32_t * second_level_table = (uint32_t *)(first_level_entry & 0xfffffc00);
+					uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
 					
 					for (uint32_t j = 0; j < SECOND_LEVEL_ENTRIES; j++) {
 						uint32_t & second_level_entry = second_level_table[j];
@@ -270,13 +318,21 @@ Result<uintptr_t> PrePagingPageTable::physical_to_virtual_internal(uintptr_t phy
 	return Result<uintptr_t>::failure();
 }
 
-Result<uintptr_t> PrePagingPageTable::virtual_to_physical(uintptr_t virtual_address) {
+uint32_t * PrePagingPageTable::get_first_level_table_address() {
+	return first_level_table;
+}
+
+uint32_t * PrePagingPageTable::get_second_level_table_address(uintptr_t physical_base_address){
+	return (uint32_t*)physical_base_address;
+}
+
+Result<uintptr_t> PageTableBase::virtual_to_physical(uintptr_t virtual_address) {
 	auto lock = spinlock_cs.acquire();
 	
 	return virtual_to_physical_internal(virtual_address);
 }
 
-Result<uintptr_t> PrePagingPageTable::physical_to_virtual(uintptr_t physical_address) {
+Result<uintptr_t> PageTableBase::physical_to_virtual(uintptr_t physical_address) {
 	auto lock = spinlock_cs.acquire();
 	
 	return physical_to_virtual_internal(physical_address);

@@ -1,5 +1,5 @@
 ASMFLAGS="-mcpu=arm1176jzf-s -fpic -ffreestanding"
-CXXFLAGS="-fno-exceptions -g -std=c++17 -O3 -Wall -Wextra"
+CXXFLAGS="-fno-exceptions -fno-unwind-tables -fno-rtti -g -std=c++17 -Wall -Wextra" #-O3
 
 arm-none-eabi-g++ $ASMFLAGS -c boot.S -o build/boot.o
 arm-none-eabi-g++ $ASMFLAGS -c interrupts.S -o build/interrupts.o
@@ -21,7 +21,7 @@ arm-none-eabi-objcopy --only-keep-debug kernel.elf kernel.sym
 arm-none-eabi-objcopy -S kernel.elf kernel-stripped.elf
 arm-none-eabi-objcopy -I binary -O elf32-littlearm -B arm kernel-stripped.elf kernel-binary.o
 
-arm-none-eabi-g++ -g -T loader_link.ld -o loader.elf -flto -fpic -ffreestanding -O2 build/boot.o build/interrupts.o build/utility.o build/mmio.o build/uart.o build/atags.o build/page_alloc.o build/panic.o build/elf_loader.o build/loader_main.o build/spinlock.o kernel-binary.o -nostdlib -lgcc
+arm-none-eabi-g++ -g -T loader_link.ld -o loader.elf -flto -fpic -ffreestanding -O2 build/boot.o build/interrupts.o build/utility.o build/mmio.o build/uart.o build/atags.o build/page_alloc.o build/panic.o build/elf_loader.o build/loader_main.o build/spinlock.o build/pagetable.o kernel-binary.o -nostdlib -lgcc
 
 arm-none-eabi-objcopy loader.elf -O binary phlogiston.bin
 

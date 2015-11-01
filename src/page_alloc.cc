@@ -27,14 +27,11 @@ namespace page_alloc {
 		uint32_t pages_used_for_table = (num_pages * sizeof(refcount_t) + PAGE_SIZE - 1) / PAGE_SIZE;
 		uart_puts("pages_used_for_table = "); uart_puthex(pages_used_for_table); uart_puts("\r\n");
 		
-		uint32_t first_used_page = ((uintptr_t)&__start) / PAGE_SIZE;
+		//uint32_t first_used_page = ((uintptr_t)&__start) / PAGE_SIZE;
 		uint32_t first_free_page = ((uintptr_t)&__end) / PAGE_SIZE + pages_used_for_table;
 	
 		for (uint32_t i = 0; i < num_pages; i++){
-			if (
-				i == 0 || //we allocate page 0 so that nullptr can be used as an invalid return value
-				((i >= first_used_page) && (i < first_free_page)))
-			{
+			if (i < first_free_page){
 				refcount_table[i] = 1;
 				allocated_pages++;
 			} else {

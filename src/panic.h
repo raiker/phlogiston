@@ -12,6 +12,7 @@ enum PanicCodes {
 	NoMemory,
 	NonZeroBase,
 	AssertionFailure,
+	PureVirtualFunctionCall,
 };
 
 void panic(PanicCodes code) __attribute__((noreturn));
