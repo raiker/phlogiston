@@ -114,3 +114,21 @@ void uart_puthex(uint32_t x){
 	}
 }
 
+void uart_putdec(uint32_t x){
+	bool anything_printed = false;
+	
+	for (uint32_t mod = 1000000000; mod > 0; mod /= 10){
+		uint32_t digit = x / mod;
+		x -= digit * mod;
+		
+		if (digit == 0 && !anything_printed) continue;
+		
+		uart_putc((unsigned char)digit + '0');
+		anything_printed = true;
+	}
+	
+	if (!anything_printed) {
+		uart_putc('0');
+	}
+}
+

@@ -1,6 +1,7 @@
 #include "pagetable.h"
 #include "page_alloc.h"
 #include "panic.h"
+#include "uart.h"
 
 //IMPLEMENTATION INFO
 //bit 2 in a "Translation fault" descriptor (i.e. bits [1:0] == 2'b00) represents:
@@ -336,5 +337,103 @@ Result<uintptr_t> PageTableBase::physical_to_virtual(uintptr_t physical_address)
 	auto lock = spinlock_cs.acquire();
 	
 	return physical_to_virtual_internal(physical_address);
+}
+
+void PageTableBase::print_table_info() {
+	uintptr_t unmapped_start;
+	uint32_t unmapped_count = 0;
+	
+	for (uint32_t i = 0; i < first_level_num_entries; i++){
+		uint32_t &first_level_entry = get_first_level_table_address()[i];
+		uintptr_t section_base = i * SECTION_SIZE;
+		
+		uint32_t mapping_type = first_level_entry & 0x3;
+		if (mapping_type == 0){
+			//unmapped
+			if (unmapped_count++ == 0){
+				unmapped_start = section_base;
+			}
+		} else {
+			if (unmapped_count > 0){
+				uart_puthex(unmapped_start);
+				uart_puts("\t");
+				uart_putdec(unmapped_count);
+				uart_puts(" unmapped sections\r\n");
+			}
+			
+			if (mapping_type == 1){
+				uart_puthex(section_base);
+				uart_puts("\tsecond-level page table\r\n");
+				
+				print_second_level_table_info(get_second_level_table_address(first_level_entry & 0xfffffc00), section_base);
+			} else if (mapping_type == 2){
+				uart_puthex(section_base);
+
+				uintptr_t address;
+				if (first_level_entry & (1<<18)){
+					//supersection
+					address = (first_level_entry & 0xff000000);
+					uart_puts("\tsupersection mapped to ");
+				} else {
+					//regular section
+					address = (first_level_entry & 0xfff00000);
+					uart_puts("\tsection mapped to ");
+				}
+				
+				uart_puthex(address);
+				uart_puts("\r\n");
+			} else {
+				uart_puthex(section_base);
+				uart_puts("\tinvalid descriptor!\r\n");
+			}
+		}
+	}
+	
+	if (unmapped_count > 0){
+		uart_puthex(unmapped_start);
+		uart_puts("\t");
+		uart_putdec(unmapped_count);
+		uart_puts(" unmapped sections\r\n");
+	}
+}
+
+void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t base) {
+	uintptr_t unmapped_start;
+	uint32_t unmapped_count = 0;
+	
+	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++){
+		uint32_t &second_level_entry = table[i];
+		uintptr_t page_base = base + i * PAGE_SIZE;
+		
+		if (!(second_level_entry & 0x2)){
+			//unmapped
+			if (unmapped_count++ == 0){
+				unmapped_start = page_base;
+			}
+		} else {
+			if (unmapped_count > 0){
+				uart_puthex(unmapped_start);
+				uart_puts("\t");
+				uart_putdec(unmapped_count);
+				uart_puts(" unmapped pages\r\n");
+			}
+			
+			uintptr_t address = (second_level_entry & 0xfffff000);
+			
+			uart_puts("\t");
+			uart_puthex(page_base);
+			uart_puts("\tpage mapped to ");
+			uart_puthex(address);
+			uart_puts("\r\n");
+		}
+	}
+	
+	if (unmapped_count > 0){
+		uart_puts("\t");
+		uart_puthex(unmapped_start);
+		uart_puts("\t");
+		uart_putdec(unmapped_count);
+		uart_puts(" unmapped pages\r\n");
+	}
 }
 

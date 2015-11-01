@@ -106,8 +106,9 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	PrePagingPageTable table(true);
 	
+	table.print_table_info();
 	
-	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
+	//elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
  
 	while ( true )
 		uart_putc(uart_getc());

@@ -36,6 +36,7 @@ protected:
 	virtual uint32_t * get_first_level_table_address() = 0;
 	virtual uint32_t * get_second_level_table_address(uintptr_t physical_base_address) = 0;
 	
+	void print_second_level_table_info(uint32_t * table, uintptr_t base);
 public:
 	//virtual ~PageTableBase() = default;
 	
@@ -43,7 +44,9 @@ public:
 	bool free(uintptr_t start, size_t bytes); //virtual address
 	
 	Result<uintptr_t> virtual_to_physical(uintptr_t virtual_address);
-	Result<uintptr_t> physical_to_virtual(uintptr_t physical_address);	
+	Result<uintptr_t> physical_to_virtual(uintptr_t physical_address);
+	
+	void print_table_info();
 };
 
 class PrePagingPageTable : public PageTableBase {
