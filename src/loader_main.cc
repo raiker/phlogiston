@@ -106,8 +106,23 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	PrePagingPageTable table(true);
 	
+	//table.print_table_info();
+	
+	table.allocate(52000, AllocationGranularity::Page);
+	table.allocate(1234, AllocationGranularity::Page);
+	table.allocate(1234, AllocationGranularity::Section);
+	table.allocate(1234, AllocationGranularity::Section);
+	table.allocate(20000000, AllocationGranularity::Supersection);
+	
 	table.print_table_info();
 	
+	uart_putline();
+	
+	page_alloc::MemStats stats = page_alloc::get_mem_stats();
+	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_putline();
+	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_putline();
+	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_putline();
+
 	//elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
  
 	while ( true )

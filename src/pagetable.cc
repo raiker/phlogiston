@@ -167,7 +167,7 @@ Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranulari
 				
 				for (uint32_t j = start_index; j < start_index + num_sections; j++){
 					//TODO: permissions bits
-					uint32_t base_addr = page_alloc::alloc(4);
+					uint32_t base_addr = page_alloc::alloc(256);
 					first_level_table[j] = base_addr | 0x00000002;
 				}
 				
@@ -199,7 +199,7 @@ Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranulari
 				uint32_t start_index = i - 16 * (num_supersections - 1);
 				for (uint32_t k = start_index; k < start_index + (num_supersections * 16); k += 16){
 					//TODO: permissions bits
-					uint32_t base_addr = page_alloc::alloc(16);
+					uint32_t base_addr = page_alloc::alloc(4096);
 					uint32_t new_entry = base_addr | 0x00040002;
 					
 					for (uint32_t j = 0; j < 16; j++){
@@ -340,6 +340,8 @@ Result<uintptr_t> PageTableBase::physical_to_virtual(uintptr_t physical_address)
 }
 
 void PageTableBase::print_table_info() {
+	auto lock = spinlock_cs.acquire();
+	
 	uintptr_t unmapped_start;
 	uint32_t unmapped_count = 0;
 	
@@ -359,6 +361,7 @@ void PageTableBase::print_table_info() {
 				uart_puts("\t");
 				uart_putdec(unmapped_count);
 				uart_puts(" unmapped sections\r\n");
+				unmapped_count = 0;
 			}
 			
 			if (mapping_type == 1){
@@ -371,6 +374,7 @@ void PageTableBase::print_table_info() {
 
 				uintptr_t address;
 				if (first_level_entry & (1<<18)){
+					//uart_puthex(first_level_entry);
 					//supersection
 					address = (first_level_entry & 0xff000000);
 					uart_puts("\tsupersection mapped to ");
@@ -394,6 +398,7 @@ void PageTableBase::print_table_info() {
 		uart_puts("\t");
 		uart_putdec(unmapped_count);
 		uart_puts(" unmapped sections\r\n");
+		unmapped_count = 0;
 	}
 }
 
@@ -416,6 +421,7 @@ void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t ba
 				uart_puts("\t");
 				uart_putdec(unmapped_count);
 				uart_puts(" unmapped pages\r\n");
+				unmapped_count = 0;
 			}
 			
 			uintptr_t address = (second_level_entry & 0xfffff000);
@@ -434,6 +440,7 @@ void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t ba
 		uart_puts("\t");
 		uart_putdec(unmapped_count);
 		uart_puts(" unmapped pages\r\n");
+		unmapped_count = 0;
 	}
 }
 

@@ -61,8 +61,9 @@ namespace page_alloc {
 		//pages are 1 page (4KiB) of memory, aligned to 4KiB
 		//pagetables are 4 pages (16KiB) of memory, aligned to 16KiB
 		//sections are 256 pages (1MiB) of memory, aligned to 1MiB
+		//supersections are 4096 pages (16MiB) of memory, aligned to 16MiB
 		
-		if (size != 1 && size != 4 && size != 256) {
+		if (size != 1 && size != 4 && size != 256 && size != 4096) {
 			panic(PanicCodes::IncompatibleParameter);
 		}
 		
@@ -72,8 +73,9 @@ namespace page_alloc {
 		static uint32_t next_alloc_1 = 0; //page
 		static uint32_t next_alloc_4 = 0; //pagetable
 		static uint32_t next_alloc_256 = 0; //section
+		static uint32_t next_alloc_4096 = 0; //supersection
 		
-		uint32_t &next_alloc = (size == 1) ? next_alloc_1 : (size == 4) ? next_alloc_4 : next_alloc_256;
+		uint32_t &next_alloc = (size == 1) ? next_alloc_1 : (size == 4) ? next_alloc_4 : (size == 256) ? next_alloc_256 : next_alloc_4096;
 		
 		uint32_t entry = next_alloc;
 		uintptr_t retval = 0;

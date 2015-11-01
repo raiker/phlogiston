@@ -132,3 +132,8 @@ void uart_putdec(uint32_t x){
 	}
 }
 
+void uart_putline(){
+	uart_putc('\r');
+	uart_putc('\n');
+}
+

@@ -11,3 +11,4 @@ void uart_write(const unsigned char* buffer, size_t size);
 void uart_puts(const char* str);
 void uart_puthex(uint32_t x);
 void uart_putdec(uint32_t x);
+void uart_putline();
