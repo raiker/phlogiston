@@ -63,7 +63,7 @@ PrePagingPageTable::~PrePagingPageTable() {
 	}
 }
 
-Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranularity granularity) {
+Result<uintptr_t> PageTableBase::allocate(size_t bytes, AllocationGranularity granularity) {
 	/*static uintptr_t next_alloc_page = 0x00000000;
 	static uintptr_t next_alloc_section = 0x00000000;
 	static uintptr_t next_alloc_supersection = 0x00000000;*/
@@ -84,6 +84,8 @@ Result<uintptr_t> PrePagingPageTable::allocate(size_t bytes, AllocationGranulari
 	if (bytes == 0){
 		return Result<uintptr_t>::failure();
 	}
+	
+	uint32_t * first_level_table = get_first_level_table_address();
 	
 	//slow, but packs fairly efficiently
 	if (granularity == AllocationGranularity::Page){

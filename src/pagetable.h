@@ -40,7 +40,7 @@ protected:
 public:
 	//virtual ~PageTableBase() = default;
 	
-	virtual Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity) = 0; //virtual address
+	Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity); //virtual address
 	bool free(uintptr_t start, size_t bytes); //virtual address
 	
 	Result<uintptr_t> virtual_to_physical(uintptr_t virtual_address);
@@ -66,7 +66,7 @@ public:
 	PrePagingPageTable(const PrePagingPageTable &other) = delete; //we don't want this to be copy-constructed
 	~PrePagingPageTable();
 	
-	virtual Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity);
+	//virtual Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity);
 };
 
 class PageTable {
