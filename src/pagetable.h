@@ -37,6 +37,17 @@ protected:
 	virtual uint32_t * get_second_level_table_address(uintptr_t physical_base_address) = 0;
 	
 	void print_second_level_table_info(uint32_t * table, uintptr_t base);
+	
+	Result<uintptr_t> reserve_pages(uint32_t num_pages);
+	Result<uintptr_t> reserve_sections(uint32_t num_sections);
+	Result<uintptr_t> reserve_supersections(uint32_t num_supersections);
+	
+	bool commit_page(uintptr_t virtual_address, uintptr_t physical_address);
+	bool commit_section(uintptr_t virtual_address, uintptr_t physical_address);
+	bool commit_supersection(uintptr_t virtual_address, uintptr_t physical_address);
+	
+	Result<uint32_t*> get_page_descriptor(uintptr_t virtual_address);
+	Result<uint32_t*> get_section_descriptor(uintptr_t virtual_address);
 public:
 	//virtual ~PageTableBase() = default;
 	
