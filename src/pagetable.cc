@@ -143,7 +143,7 @@ bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, Allocati
 	return true;
 }
 
-bool map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
+bool PageTableBase::map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
 	auto lock = spinlock_cs.acquire();
 	
 	for (uint32_t i = 0; i < units; i++){
@@ -509,14 +509,14 @@ Result<uintptr_t> PageTableBase::reserve_pages(uintptr_t base, uint32_t num_page
 		reserve_pages_from_section(reservation_base, pages_to_reserve);
 		
 		num_unreserved_pages -= pages_to_reserve;
-		reservation_base = reservation_base & 0xfff00000 + SECTION_SIZE;
+		reservation_base = (reservation_base & 0xfff00000) + SECTION_SIZE;
 	}
 	
 	return Result<uintptr_t>::success(base);
 }
 
 //checks whether num_pages pages can be reserved in the section enclosing base, starting from base
-bool check_section_partially_reservable(uintptr_t base, uint32_t num_pages) {
+bool PageTableBase::check_section_partially_reservable(uintptr_t base, uint32_t num_pages) {
 	auto result = get_section_descriptor(base);
 	
 	if (!result.is_success) return false;
@@ -538,7 +538,7 @@ bool check_section_partially_reservable(uintptr_t base, uint32_t num_pages) {
 }
 
 //check_section_partially_reservable MUST be called beforehand; this performs no checks
-void reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
+void PageTableBase::reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
 	auto result = get_section_descriptor(base);
 	
 	uint32_t * second_level_table;
@@ -548,7 +548,7 @@ void reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
 		//TODO: fix this
 		uint32_t * new_table = create_second_level_table();
 		*result.value = (uint32_t)new_table | 0x1 | (SUPERVISOR_DOMAIN << 5);
-		second_level_table = get_second_level_table_address(new_table);
+		second_level_table = get_second_level_table_address((uintptr_t)new_table);
 	} else {
 		second_level_table = get_second_level_table_address(*result.value & 0xfffffc00);
 	}
@@ -564,14 +564,14 @@ Result<uintptr_t> PageTableBase::reserve_sections(uintptr_t base, uint32_t num_s
 	base &= 0xfff00000;
 	
 	for (uint32_t i = 0; i < num_sections; i++){
-		auto result = get_section_descriptor(uintptr_t + i * SECTION_SIZE);
+		auto result = get_section_descriptor(base + i * SECTION_SIZE);
 		if (!result.is_success || *result.value & 0x7){
 			return Result<uintptr_t>::failure();
 		}
 	}
 	
 	for (uint32_t i = 0; i < num_sections; i++){
-		auto result = get_section_descriptor(uintptr_t + i * SECTION_SIZE);
+		auto result = get_section_descriptor(base + i * SECTION_SIZE);
 		*result.value = 0x00000004;
 	}
 	
@@ -582,14 +582,14 @@ Result<uintptr_t> PageTableBase::reserve_supersections(uintptr_t base, uint32_t 
 	base &= 0xff000000;
 	
 	for (uint32_t i = 0; i < num_supersections * 16; i++){
-		auto result = get_section_descriptor(uintptr_t + i * SECTION_SIZE);
+		auto result = get_section_descriptor(base + i * SECTION_SIZE);
 		if (!result.is_success || *result.value & 0x7){
 			return Result<uintptr_t>::failure();
 		}
 	}
 	
-	for (uint32_t i = 0; i < num_sections * 16; i++){
-		auto result = get_section_descriptor(uintptr_t + i * SECTION_SIZE);
+	for (uint32_t i = 0; i < num_supersections * 16; i++){
+		auto result = get_section_descriptor(base + i * SECTION_SIZE);
 		*result.value = 0x00000004;
 	}
 	
