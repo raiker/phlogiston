@@ -108,11 +108,11 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	//table.print_table_info();
 	
-	table.allocate(52000, AllocationGranularity::Page);
-	table.allocate(1234, AllocationGranularity::Page);
-	table.allocate(1234, AllocationGranularity::Section);
-	table.allocate(1234, AllocationGranularity::Section);
-	table.allocate(20000000, AllocationGranularity::Supersection);
+	table.reserve_commit(52000, AllocationGranularity::Page);
+	table.reserve_commit(1234, AllocationGranularity::Page);
+	table.reserve_commit(1234, AllocationGranularity::Section);
+	table.reserve_commit(1234, AllocationGranularity::Section);
+	table.reserve_commit(20000000, AllocationGranularity::Supersection);
 	
 	table.print_table_info();
 	

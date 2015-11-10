@@ -41,6 +41,13 @@ protected:
 	Result<uintptr_t> reserve_pages(uint32_t num_pages);
 	Result<uintptr_t> reserve_sections(uint32_t num_sections);
 	Result<uintptr_t> reserve_supersections(uint32_t num_supersections);
+
+	Result<uintptr_t> reserve_pages(uintptr_t base, uint32_t num_pages);
+	Result<uintptr_t> reserve_sections(uintptr_t base, uint32_t num_sections);
+	Result<uintptr_t> reserve_supersections(uintptr_t base, uint32_t num_supersections);
+	
+	bool check_section_partially_reservable(uintptr_t base, uint32_t num_pages);
+	void reserve_pages_from_section(uintptr_t base, uint32_t num_pages);
 	
 	bool commit_page(uintptr_t virtual_address, uintptr_t physical_address);
 	bool commit_section(uintptr_t virtual_address, uintptr_t physical_address);
@@ -51,8 +58,18 @@ protected:
 public:
 	//virtual ~PageTableBase() = default;
 	
-	Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity); //virtual address
-	bool free(uintptr_t start, size_t bytes); //virtual address
+	//Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity); //virtual address
+	//bool free(uintptr_t start, size_t bytes); //virtual address
+	
+	Result<uintptr_t> reserve(uint32_t units, AllocationGranularity granularity);
+	Result<uintptr_t> reserve(uintptr_t address, uint32_t units, AllocationGranularity granularity);
+	
+	Result<uintptr_t> reserve_allocate(uint32_t units, AllocationGranularity granularity);
+	Result<uintptr_t> reserve_allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
+
+	bool allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
+	
+	bool map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity);
 	
 	Result<uintptr_t> virtual_to_physical(uintptr_t virtual_address);
 	Result<uintptr_t> physical_to_virtual(uintptr_t physical_address);
