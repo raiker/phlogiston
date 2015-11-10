@@ -158,5 +158,11 @@ namespace page_alloc {
 		
 		return retval;
 	}
+	
+	void ref_release(uintptr_t page, uint32_t size){
+		for (uint32_t i = 0; i < size; i++){
+			ref_release(page + i * PAGE_SIZE);
+		}
+	}
 }
 

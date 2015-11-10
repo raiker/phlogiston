@@ -111,38 +111,85 @@ Result<uintptr_t> PageTableBase::reserve(uintptr_t address, uint32_t units, Allo
 bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
 	auto lock = spinlock_cs.acquire();
 	
-	size_t allocation_size = get_allocation_size(granularity);
-	
-	switch (granularity){
-		case AllocationGranularity::Page:
-			return commit_pages(virtual_address, units);
-		case AllocationGranularity::Section:
-			return commit_sections(virtual_address, units);
-		case AllocationGranularity::Supersection:
-			return commit_supersections(virtual_address, units);
-		default:
-			panic(PanicCodes::IncompatibleParameter);
+	for (uint32_t i = 0; i < units; i++){
+		//allocate a block
+		uintptr_t physical_address = page_alloc::alloc(get_allocation_pages(granularity));
+		
+		uintptr_t map_address = virtual_address + i * get_allocation_pages(granularity) * PAGE_SIZE;
+		
+		//map it
+		bool success;
+		
+		switch (granularity){
+			case AllocationGranularity::Page:
+				success = commit_page(map_address, physical_address);
+				break;
+			case AllocationGranularity::Section:
+				success = commit_section(map_address, physical_address);
+				break;
+			case AllocationGranularity::Supersection:
+				success = commit_supersection(map_address, physical_address);
+				break;
+			default:
+				panic(PanicCodes::IncompatibleParameter);
+		}
+		
+		if (!success) {
+			page_alloc::ref_release(physical_address, get_allocation_pages(granularity)); //free the allocated memory
+			return false;
+		}
 	}
+	
+	return true;
 }
 
-Result<uintptr_t> PageTableBase::reserve_commit(uint32_t units, AllocationGranularity granularity){
+bool map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
+	auto lock = spinlock_cs.acquire();
+	
+	for (uint32_t i = 0; i < units; i++){
+		uintptr_t offset = i * get_allocation_pages(granularity) * PAGE_SIZE;
+		
+		//map it
+		bool success;
+		
+		switch (granularity){
+			case AllocationGranularity::Page:
+				success = commit_page(virtual_address + offset, physical_address + offset);
+				break;
+			case AllocationGranularity::Section:
+				success = commit_section(virtual_address + offset, physical_address + offset);
+				break;
+			case AllocationGranularity::Supersection:
+				success = commit_supersection(virtual_address + offset, physical_address + offset);
+				break;
+			default:
+				panic(PanicCodes::IncompatibleParameter);
+		}
+		
+		if (!success) return false;
+	}
+	
+	return true;
+}
+
+Result<uintptr_t> PageTableBase::reserve_allocate(uint32_t units, AllocationGranularity granularity){
 	//doesn't acquire lock; convenience method
 	
 	Result<uintptr_t> reservation = reserve(units, granularity);
 	if (reservation.is_success){
-		if (!commit(reservation.value, units, granularity)){
+		if (!allocate(reservation.value, units, granularity)){
 			return Result<uintptr_t>::failure();
 		}
 	}
 	return reservation;
 }
 
-Result<uintptr_t> PageTableBase::reserve_commit(uintptr_t address, uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t> PageTableBase::reserve_allocate(uintptr_t address, uint32_t units, AllocationGranularity granularity){
 	//doesn't acquire lock; convenience method
 	
 	Result<uintptr_t> reservation = reserve(address, units, granularity);
 	if (reservation.is_success){
-		if (!commit(reservation.value, units, granularity)){
+		if (!allocate(reservation.value, units, granularity)){
 			return Result<uintptr_t>::failure();
 		}
 	}
