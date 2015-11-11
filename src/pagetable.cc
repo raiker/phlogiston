@@ -719,11 +719,33 @@ Result<uintptr_t> PageTableBase::physical_to_virtual(uintptr_t physical_address)
 	return physical_to_virtual_internal(physical_address);
 }
 
+enum AggregationTypes {
+	Unmapped,
+	Reserved,
+};
+
+void section_aggregation_display(
+	uintptr_t &aggregation_start,
+	uint32_t &aggregation_count,
+	AggregationTypes &aggregation_type)
+{
+	uart_puthex(aggregation_start);
+	uart_puts("\t");
+	uart_putdec(aggregation_count);
+	if (aggregation_type == AggregationTypes::Unmapped){
+		uart_puts(" unmapped sections\r\n");
+	} else {
+		uart_puts(" reserved sections\r\n");
+	}
+	aggregation_count = 0;
+}
+
 void PageTableBase::print_table_info() {
 	auto lock = spinlock_cs.acquire();
 	
-	uintptr_t unmapped_start;
-	uint32_t unmapped_count = 0;
+	uintptr_t aggregation_start;
+	uint32_t aggregation_count = 0;
+	AggregationTypes aggregation_type;
 	
 	for (uint32_t i = 0; i < first_level_num_entries; i++){
 		uint32_t &first_level_entry = get_first_level_table_address()[i];
@@ -731,17 +753,30 @@ void PageTableBase::print_table_info() {
 		
 		uint32_t mapping_type = first_level_entry & 0x3;
 		if (mapping_type == 0){
-			//unmapped
-			if (unmapped_count++ == 0){
-				unmapped_start = section_base;
+			if (first_level_entry & 0x4){
+				//section is reserved
+				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Reserved){
+					section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+				}
+				
+				if (aggregation_count++ == 0){
+					aggregation_start = section_base;
+					aggregation_type = AggregationTypes::Reserved;
+				}
+			} else {
+				//unmapped
+				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Unmapped){
+					section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+				}
+				
+				if (aggregation_count++ == 0){
+					aggregation_start = section_base;
+					aggregation_type = AggregationTypes::Unmapped;
+				}
 			}
 		} else {
-			if (unmapped_count > 0){
-				uart_puthex(unmapped_start);
-				uart_puts("\t");
-				uart_putdec(unmapped_count);
-				uart_puts(" unmapped sections\r\n");
-				unmapped_count = 0;
+			if (aggregation_count > 0){
+				section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
 			}
 			
 			if (mapping_type == 1){
@@ -775,12 +810,8 @@ void PageTableBase::print_table_info() {
 		}
 	}
 	
-	if (unmapped_count > 0){
-		uart_puthex(unmapped_start);
-		uart_puts("\t");
-		uart_putdec(unmapped_count);
-		uart_puts(" unmapped sections\r\n");
-		unmapped_count = 0;
+	if (aggregation_count > 0){
+		section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
 	}
 }
 
