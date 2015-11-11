@@ -108,8 +108,8 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	//table.print_table_info();
 	
-	table.reserve_allocate(4, AllocationGranularity::Page);
-	table.reserve_allocate(3, AllocationGranularity::Section);
+	table.reserve(4, AllocationGranularity::Page);
+	table.reserve(3, AllocationGranularity::Section);
 	table.reserve(2, AllocationGranularity::Supersection);
 	
 	table.print_table_info();

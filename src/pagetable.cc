@@ -740,6 +740,23 @@ void section_aggregation_display(
 	aggregation_count = 0;
 }
 
+void page_aggregation_display(
+	uintptr_t &aggregation_start,
+	uint32_t &aggregation_count,
+	AggregationTypes &aggregation_type)
+{
+	uart_puts("\t");
+	uart_puthex(aggregation_start);
+	uart_puts("\t");
+	uart_putdec(aggregation_count);
+	if (aggregation_type == AggregationTypes::Unmapped){
+		uart_puts(" unmapped pages\r\n");
+	} else {
+		uart_puts(" reserved pages\r\n");
+	}
+	aggregation_count = 0;
+}
+
 void PageTableBase::print_table_info() {
 	auto lock = spinlock_cs.acquire();
 	
@@ -816,25 +833,39 @@ void PageTableBase::print_table_info() {
 }
 
 void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t base) {
-	uintptr_t unmapped_start;
-	uint32_t unmapped_count = 0;
+	uintptr_t aggregation_start;
+	uint32_t aggregation_count = 0;
+	AggregationTypes aggregation_type;
 	
 	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++){
 		uint32_t &second_level_entry = table[i];
 		uintptr_t page_base = base + i * PAGE_SIZE;
 		
 		if (!(second_level_entry & 0x2)){
-			//unmapped
-			if (unmapped_count++ == 0){
-				unmapped_start = page_base;
+			if (second_level_entry & 0x4){
+				//section is reserved
+				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Reserved){
+					page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+				}
+				
+				if (aggregation_count++ == 0){
+					aggregation_start = page_base;
+					aggregation_type = AggregationTypes::Reserved;
+				}
+			} else {
+				//unmapped
+				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Unmapped){
+					page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+				}
+				
+				if (aggregation_count++ == 0){
+					aggregation_start = page_base;
+					aggregation_type = AggregationTypes::Unmapped;
+				}
 			}
 		} else {
-			if (unmapped_count > 0){
-				uart_puthex(unmapped_start);
-				uart_puts("\t");
-				uart_putdec(unmapped_count);
-				uart_puts(" unmapped pages\r\n");
-				unmapped_count = 0;
+			if (aggregation_count > 0){
+				page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
 			}
 			
 			uintptr_t address = (second_level_entry & 0xfffff000);
@@ -847,13 +878,8 @@ void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t ba
 		}
 	}
 	
-	if (unmapped_count > 0){
-		uart_puts("\t");
-		uart_puthex(unmapped_start);
-		uart_puts("\t");
-		uart_putdec(unmapped_count);
-		uart_puts(" unmapped pages\r\n");
-		unmapped_count = 0;
+	if (aggregation_count > 0){
+		page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
 	}
 }
 
