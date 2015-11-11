@@ -109,6 +109,14 @@ Result<uintptr_t> PageTableBase::reserve(uintptr_t address, uint32_t units, Allo
 }
 
 bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
+	uart_puts("PageTableBase::allocate(virtual_address=");
+	uart_puthex(virtual_address);
+	uart_puts(",units=");
+	uart_putdec(units);
+	uart_puts(",granularity=");
+	uart_putdec((uint32_t)granularity);
+	uart_puts(")\r\n");
+	
 	auto lock = spinlock_cs.acquire();
 	
 	for (uint32_t i = 0; i < units; i++){
@@ -132,6 +140,10 @@ bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, Allocati
 				break;
 			default:
 				panic(PanicCodes::IncompatibleParameter);
+		}
+		
+		if (!success){
+			uart_puts("failure\r\n");
 		}
 		
 		if (!success) {
@@ -299,6 +311,12 @@ bool PageTableBase::commit_section(uintptr_t virtual_address, uintptr_t physical
 }
 
 bool PageTableBase::commit_supersection(uintptr_t virtual_address, uintptr_t physical_address){
+	uart_puts("PageTableBase::commit_supersection(virtual_address=");
+	uart_puthex(virtual_address);
+	uart_puts(",physical_address=");
+	uart_puthex(physical_address);
+	uart_puts(")\r\n");
+	
 	//TODO: Permission bits
 	virtual_address &= 0xff000000;
 	physical_address &= 0xff000000;
