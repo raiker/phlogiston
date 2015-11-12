@@ -5,6 +5,9 @@
 #include "panic.h"
 #include "elf_loader.h"
 #include "pagetable.h"
+#include "runtime_tests.h"
+
+#define RUN_TESTS
 
 extern uint32_t _binary_kernel_stripped_elf_start;
   
@@ -104,25 +107,40 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		page_alloc::alloc(256);
 	}*/
 	
-	PrePagingPageTable table(true);
+#ifdef RUN_TESTS
+	if (test_pagetables()){
+		uart_puts("All tests passed\r\n");
+	} else {
+		uart_puts("Some tests failed\r\n");
+	}
+#else
 	
-	//table.print_table_info();
+	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
+ 
+	page_alloc::MemStats stats;
 	
-	table.reserve_allocate(4, AllocationGranularity::Page);
-	table.reserve_allocate(3, AllocationGranularity::Section);
-	table.reserve_allocate(3, AllocationGranularity::Supersection);
+	{
+		PrePagingPageTable supervisor_table(true);
+		
+		if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table)){
+			uart_puts("Failed to load kernel\r\n");
+		}
+			
+		//supervisor_table.print_table_info();
 	
-	table.print_table_info();
+		uart_putline();
 	
-	uart_putline();
+		stats = page_alloc::get_mem_stats();
+		uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_putline();
+		uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_putline();
+		uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_putline();
+	}
 	
-	page_alloc::MemStats stats = page_alloc::get_mem_stats();
+	stats = page_alloc::get_mem_stats();
 	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_putline();
 	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_putline();
 	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_putline();
-
-	//elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
- 
+#endif
 	while ( true )
 		uart_putc(uart_getc());
 }

@@ -18,11 +18,13 @@ const uint32_t SUPERVISOR_DOMAIN = 0;
 //first level page tables are 64KiB each
 //second level page tables are 1KiB each
 
-enum AllocationGranularity {
+enum class AllocationGranularity {
 	Page,
 	Section,
 	Supersection
 };
+
+uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularity);
 
 class PageTableBase {
 protected:
@@ -54,7 +56,7 @@ protected:
 	bool commit_supersection(uintptr_t virtual_address, uintptr_t physical_address);
 	
 	Result<uint32_t*> get_page_descriptor(uintptr_t virtual_address);
-	Result<uint32_t*> get_section_descriptor(uintptr_t virtual_address);
+	Result<uint32_t*> get_section_descriptor(uintptr_t virtual_address, bool allow_second_level);
 public:
 	//virtual ~PageTableBase() = default;
 	
@@ -92,7 +94,7 @@ class PrePagingPageTable : public PageTableBase {
 public:
 	PrePagingPageTable(bool is_supervisor);
 	PrePagingPageTable(const PrePagingPageTable &other) = delete; //we don't want this to be copy-constructed
-	~PrePagingPageTable();
+	virtual ~PrePagingPageTable();
 	
 	//virtual Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity);
 };

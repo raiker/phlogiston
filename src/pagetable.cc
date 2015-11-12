@@ -109,6 +109,7 @@ Result<uintptr_t> PageTableBase::reserve(uintptr_t address, uint32_t units, Allo
 }
 
 bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
+#ifdef VERBOSE
 	uart_puts("PageTableBase::allocate(virtual_address=");
 	uart_puthex(virtual_address);
 	uart_puts(",units=");
@@ -116,6 +117,7 @@ bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, Allocati
 	uart_puts(",granularity=");
 	uart_putdec((uint32_t)granularity);
 	uart_puts(")\r\n");
+#endif
 	
 	auto lock = spinlock_cs.acquire();
 	
@@ -231,7 +233,7 @@ bool PageTableBase::commit_section(uintptr_t virtual_address, uintptr_t physical
 	virtual_address &= 0xfff00000;
 	physical_address &= 0xfff00000;
 	
-	auto result = get_section_descriptor(virtual_address);
+	auto result = get_section_descriptor(virtual_address, false);
 	
 	if (result.is_success){
 		//in order to be committed, the section needs to be reserved already
@@ -245,17 +247,19 @@ bool PageTableBase::commit_section(uintptr_t virtual_address, uintptr_t physical
 }
 
 bool PageTableBase::commit_supersection(uintptr_t virtual_address, uintptr_t physical_address){
+#ifdef VERBOSE
 	uart_puts("PageTableBase::commit_supersection(virtual_address=");
 	uart_puthex(virtual_address);
 	uart_puts(",physical_address=");
 	uart_puthex(physical_address);
 	uart_puts(")\r\n");
+#endif
 	
 	//TODO: Permission bits
 	virtual_address &= 0xff000000;
 	physical_address &= 0xff000000;
 	
-	auto result = get_section_descriptor(virtual_address);
+	auto result = get_section_descriptor(virtual_address, false);
 	
 	if (result.is_success){
 		//in order to be committed, the sections need to be reserved already
@@ -289,7 +293,7 @@ Result<uint32_t*> PageTableBase::get_page_descriptor(uintptr_t virtual_address) 
 	return Result<uint32_t*>::failure();
 }
 
-Result<uint32_t*> PageTableBase::get_section_descriptor(uintptr_t virtual_address) {
+Result<uint32_t*> PageTableBase::get_section_descriptor(uintptr_t virtual_address, bool allow_second_level) {
 	uint32_t first_level_index = virtual_address >> 20;
 	
 	if (first_level_index >= first_level_num_entries) {
@@ -298,7 +302,7 @@ Result<uint32_t*> PageTableBase::get_section_descriptor(uintptr_t virtual_addres
 	
 	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
 	
-	if ((first_level_entry & 0x3) == 1) {
+	if ((first_level_entry & 0x3) == 1 && !allow_second_level) {
 		return Result<uint32_t*>::failure();
 	} else {
 		return Result<uint32_t*>::success(&first_level_entry);
@@ -465,7 +469,7 @@ Result<uintptr_t> PageTableBase::reserve_pages(uintptr_t base, uint32_t num_page
 
 //checks whether num_pages pages can be reserved in the section enclosing base, starting from base
 bool PageTableBase::check_section_partially_reservable(uintptr_t base, uint32_t num_pages) {
-	auto result = get_section_descriptor(base);
+	auto result = get_section_descriptor(base, true);
 	
 	if (!result.is_success) return false;
 	
@@ -479,6 +483,7 @@ bool PageTableBase::check_section_partially_reservable(uintptr_t base, uint32_t 
 			
 			if (!result.is_success || (*result.value & 0x7)) return false;
 		}
+		return true;
 	}
 	
 	//section is in use
@@ -487,7 +492,7 @@ bool PageTableBase::check_section_partially_reservable(uintptr_t base, uint32_t 
 
 //check_section_partially_reservable MUST be called beforehand; this performs no checks
 void PageTableBase::reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
-	auto result = get_section_descriptor(base);
+	auto result = get_section_descriptor(base, true);
 	
 	uint32_t * second_level_table;
 	
@@ -501,10 +506,10 @@ void PageTableBase::reserve_pages_from_section(uintptr_t base, uint32_t num_page
 		second_level_table = get_second_level_table_address(*result.value & 0xfffffc00);
 	}
 	
-	uint32_t start_index = base & 0x000ff000;
+	uint32_t start_index = (base & 0x000ff000) >> 12;
 	
 	for (uint32_t i = 0; i < num_pages; i++){
-		second_level_table[start_index + i] = 0x00000002;
+		second_level_table[start_index + i] = 0x00000004;
 	}
 }
 
@@ -512,14 +517,14 @@ Result<uintptr_t> PageTableBase::reserve_sections(uintptr_t base, uint32_t num_s
 	base &= 0xfff00000;
 	
 	for (uint32_t i = 0; i < num_sections; i++){
-		auto result = get_section_descriptor(base + i * SECTION_SIZE);
+		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
 		if (!result.is_success || *result.value & 0x7){
 			return Result<uintptr_t>::failure();
 		}
 	}
 	
 	for (uint32_t i = 0; i < num_sections; i++){
-		auto result = get_section_descriptor(base + i * SECTION_SIZE);
+		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
 		*result.value = 0x00000004;
 	}
 	
@@ -530,14 +535,14 @@ Result<uintptr_t> PageTableBase::reserve_supersections(uintptr_t base, uint32_t 
 	base &= 0xff000000;
 	
 	for (uint32_t i = 0; i < num_supersections * 16; i++){
-		auto result = get_section_descriptor(base + i * SECTION_SIZE);
+		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
 		if (!result.is_success || *result.value & 0x7){
 			return Result<uintptr_t>::failure();
 		}
 	}
 	
 	for (uint32_t i = 0; i < num_supersections * 16; i++){
-		auto result = get_section_descriptor(base + i * SECTION_SIZE);
+		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
 		*result.value = 0x00000004;
 	}
 	
@@ -667,7 +672,7 @@ Result<uintptr_t> PageTableBase::physical_to_virtual(uintptr_t physical_address)
 	return physical_to_virtual_internal(physical_address);
 }
 
-enum AggregationTypes {
+enum class AggregationTypes {
 	Unmapped,
 	Reserved,
 };
@@ -745,10 +750,13 @@ void PageTableBase::print_table_info() {
 			}
 			
 			if (mapping_type == 1){
+				uintptr_t second_level_physical_address = first_level_entry & 0xfffffc00;
 				uart_puthex(section_base);
-				uart_puts("\tsecond-level page table\r\n");
+				uart_puts("\tsecond-level page table (");
+				uart_puthex(second_level_physical_address);
+				uart_puts(")\r\n");
 				
-				print_second_level_table_info(get_second_level_table_address(first_level_entry & 0xfffffc00), section_base);
+				print_second_level_table_info(get_second_level_table_address(second_level_physical_address), section_base);
 			} else if (mapping_type == 2){
 				uart_puthex(section_base);
 				
@@ -839,6 +847,19 @@ void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t ba
 	
 	if (aggregation_count > 0){
 		page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+	}
+}
+
+uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularity) {
+	switch (granularity){
+		case AllocationGranularity::Page:
+			return bytes / PAGE_SIZE + (bytes & (PAGE_SIZE-1)) ? 1 : 0;
+		case AllocationGranularity::Section:
+			return bytes / SECTION_SIZE + (bytes & (SECTION_SIZE-1)) ? 1 : 0;
+		case AllocationGranularity::Supersection:
+			return bytes / SUPERSECTION_SIZE + (bytes & (SUPERSECTION_SIZE-1)) ? 1 : 0;
+		default:
+			panic(PanicCodes::IncompatibleParameter);
 	}
 }
 

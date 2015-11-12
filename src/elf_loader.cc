@@ -110,3 +110,48 @@ void elf_parse_header(void * elf_header){
 	}
 }
 
+bool load_elf(void * elf_header, PageTableBase & pagetable) {
+	Elf32_Ehdr *header = (Elf32_Ehdr*)elf_header;
+	
+	if (sizeof(Elf32_Shdr) != header->e_shentsize){
+		uart_puts("Size mismatch\r\n");
+		return false;
+	}
+	
+	Elf32_Shdr * section_header_array = (Elf32_Shdr*)((uintptr_t)elf_header + header->e_shoff);
+	
+	for (uint32_t i = 0; i < header->e_shnum; i++){
+		const Elf32_Shdr & sec_header = section_header_array[i];
+		
+		if (sec_header.sh_type == Elf32_SectionType::SHT_PROGBITS){
+			if (sec_header.sh_flags & Elf32_SectionFlags::SHF_ALLOC){
+				//check section alignment
+				if ((sec_header.sh_offset & (PAGE_SIZE - 1)) || (sec_header.sh_addr & (PAGE_SIZE - 1))){
+					uart_puts("Unaligned section\r\n");
+					return false;
+				}
+				
+				uint32_t npages = get_num_allocation_units(sec_header.sh_size, AllocationGranularity::Page);
+				auto reservation = pagetable.reserve(sec_header.sh_addr, npages, AllocationGranularity::Page);
+				
+				if (!reservation.is_success){
+					uart_puts("Failed to reserve memory\r\n");
+					return false;
+				}
+				
+				pagetable.print_table_info();
+				
+				/*//TODO: make this able to cope with the header being paged
+				uintptr_t physical_addr = (uintptr_t)header + sec_header.sh_offset;
+				
+				if (!pagetable.map(reservation.value, physical_addr, npages, AllocationGranularity::Page)){
+					uart_puts("Failed to map memory\r\n");
+					return false;
+				}*/
+			}
+		}
+	}
+	
+	return true;
+}
+

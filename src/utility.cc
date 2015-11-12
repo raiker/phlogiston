@@ -18,3 +18,12 @@ size_t strlen(const char* str){
 extern "C" void __cxa_pure_virtual(){
 	panic(PanicCodes::PureVirtualFunctionCall);
 }
+
+void operator delete(void* ptr){
+	panic(PanicCodes::AssertionFailure);
+}
+
+void operator delete(void* ptr, unsigned int size){
+	panic(PanicCodes::AssertionFailure);
+}
+
