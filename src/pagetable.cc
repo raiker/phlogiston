@@ -751,7 +751,9 @@ void PageTableBase::print_table_info() {
 				print_second_level_table_info(get_second_level_table_address(first_level_entry & 0xfffffc00), section_base);
 			} else if (mapping_type == 2){
 				uart_puthex(section_base);
-
+				
+				bool nx = first_level_entry & 0x10;
+				
 				uintptr_t address;
 				if (first_level_entry & (1<<18)){
 					//uart_puthex(first_level_entry);
@@ -767,6 +769,10 @@ void PageTableBase::print_table_info() {
 				}
 				
 				uart_puthex(address);
+				
+				if (nx){
+					uart_puts(" NX");
+				}
 				uart_puts("\r\n");
 			} else {
 				uart_puthex(section_base);
@@ -818,10 +824,15 @@ void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t ba
 			
 			uintptr_t address = (second_level_entry & 0xfffff000);
 			
+			bool nx = second_level_entry & 0x1;
+			
 			uart_puts("\t");
 			uart_puthex(page_base);
 			uart_puts("\tpage mapped to ");
 			uart_puthex(address);
+			if (nx){
+				uart_puts(" NX");
+			}
 			uart_puts("\r\n");
 		}
 	}
