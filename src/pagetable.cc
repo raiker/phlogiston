@@ -208,72 +208,6 @@ Result<uintptr_t> PageTableBase::reserve_allocate(uintptr_t address, uint32_t un
 	return reservation;
 }
 
-/*Result<uintptr_t> PageTableBase::allocate(size_t bytes, AllocationGranularity granularity) {
-	if (granularity != AllocationGranularity::Page &&
-		granularity != AllocationGranularity::Section &&
-		granularity != AllocationGranularity::Supersection)
-	{
-		panic(PanicCodes::IncompatibleParameter);
-	}
-	
-	if (granularity == AllocationGranularity::Page && bytes >= (SECTION_SIZE / 2)){
-		granularity = AllocationGranularity::Section;
-	}
-	
-	if (bytes == 0){
-		return Result<uintptr_t>::failure();
-	}
-	
-	auto lock = spinlock_cs.acquire();
-	
-	if (granularity == AllocationGranularity::Page){
-		uint32_t pages = bytes / PAGE_SIZE + (bytes & (PAGE_SIZE-1) ? 1 : 0);
-		
-		//try to reserve the address space
-		auto result = reserve_pages(pages);
-		
-		if (result.is_success){
-			//allocate the pages
-			uintptr_t &base = result.value;
-			for (uint32_t i = 0; i < pages; i++){
-				commit_page(base + i * PAGE_SIZE, page_alloc::alloc(1));
-			}
-		}
-		
-		return result;
-	} else if (granularity == AllocationGranularity::Section){
-		uint32_t sections = bytes / SECTION_SIZE + (bytes & (SECTION_SIZE-1) ? 1 : 0);
-		
-		//try to reserve the address space
-		auto result = reserve_sections(sections);
-		
-		if (result.is_success){
-			//allocate the sections
-			uintptr_t &base = result.value;
-			for (uint32_t i = 0; i < sections; i++){
-				commit_section(base + i * SECTION_SIZE, page_alloc::alloc(256));
-			}
-		}
-		
-		return result;
-	} else {
-		uint32_t supersections = bytes / SUPERSECTION_SIZE + (bytes & (SUPERSECTION_SIZE-1) ? 1 : 0);
-		
-		//try to reserve the address space
-		auto result = reserve_supersections(supersections);
-		
-		if (result.is_success){
-			//allocate the supersections
-			uintptr_t &base = result.value;
-			for (uint32_t i = 0; i < supersections; i++){
-				commit_supersection(base + i * SUPERSECTION_SIZE, page_alloc::alloc(4096));
-			}
-		}
-		
-		return result;
-	}
-}*/
-
 bool PageTableBase::commit_page(uintptr_t virtual_address, uintptr_t physical_address){
 	//TODO: Permission bits
 	virtual_address &= 0xfffff000;
@@ -331,11 +265,7 @@ bool PageTableBase::commit_supersection(uintptr_t virtual_address, uintptr_t phy
 		for (uint32_t i = 0; i < 16; i++){
 			result.value[i] = physical_address | 0x00040002;
 		}
-		if ((*result.value & 0x7) == 0x4){
-			//reserved but not committed yet
-			*result.value = physical_address | 0x00000002;
-			return true;
-		}
+		return true;
 	}
 	return false;
 }
