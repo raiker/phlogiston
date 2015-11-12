@@ -7,7 +7,7 @@
 #include "pagetable.h"
 #include "runtime_tests.h"
 
-#define RUN_TESTS
+//#define RUN_TESTS
 
 extern uint32_t _binary_kernel_stripped_elf_start;
   
@@ -126,7 +126,7 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 			uart_puts("Failed to load kernel\r\n");
 		}
 			
-		//supervisor_table.print_table_info();
+		supervisor_table.print_table_info();
 	
 		uart_putline();
 	

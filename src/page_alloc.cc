@@ -123,6 +123,8 @@ namespace page_alloc {
 		
 		uint32_t page_ix = page / PAGE_SIZE;
 		
+		if (page_ix > num_pages) return 0; //no-op (good for mmio etc)
+		
 		if (refcount_table[page_ix] == 0) {
 			panic(PanicCodes::AddRefToUnallocatedPage);
 		} else {
@@ -143,6 +145,8 @@ namespace page_alloc {
 		
 		uint32_t page_ix = page / PAGE_SIZE;
 		
+		if (page_ix > num_pages) return 0; //no-op (good for mmio etc)
+		
 		if (refcount_table[page_ix] == 0) {
 			panic(PanicCodes::ReleaseUnallocatedPage);
 		} else {
@@ -157,6 +161,12 @@ namespace page_alloc {
 		//spinlock_flag.clear(std::memory_order_release);
 		
 		return retval;
+	}
+	
+	void ref_acquire(uintptr_t page, uint32_t size){
+		for (uint32_t i = 0; i < size; i++){
+			ref_acquire(page + i * PAGE_SIZE);
+		}
 	}
 	
 	void ref_release(uintptr_t page, uint32_t size){

@@ -139,15 +139,13 @@ bool load_elf(void * elf_header, PageTableBase & pagetable) {
 					return false;
 				}
 				
-				pagetable.print_table_info();
-				
-				/*//TODO: make this able to cope with the header being paged
+				//TODO: make this able to cope with the header being paged
 				uintptr_t physical_addr = (uintptr_t)header + sec_header.sh_offset;
 				
 				if (!pagetable.map(reservation.value, physical_addr, npages, AllocationGranularity::Page)){
 					uart_puts("Failed to map memory\r\n");
 					return false;
-				}*/
+				}
 			}
 		}
 	}

@@ -39,16 +39,14 @@ PrePagingPageTable::PrePagingPageTable(bool is_supervisor) {
 	}
 	
 	//allocate the page at 0x00000000 to catch null dereferences
-	uint32_t * second_level_table = create_second_level_table();
-	first_level_table[0x000] = (uint32_t)second_level_table | 0x1 | (SUPERVISOR_DOMAIN << 5);
-	
-	second_level_table[0x00] = 0x00000000 | 0x3;
-	
-	/*second_level_table_addrs = (**SecondLevelTableAddr)page_alloc::alloc(1); //1 page for the addresses of the second level tables
-	
-	for (uint32_t i = 0; i < MAX_SECOND_LEVEL_TABLES; i++){
-		second_level_table_addrs[i] = {0x00000000, nullptr);
-	}*/
+	auto reservation = reserve(0x00000000, 1, AllocationGranularity::Page);
+	if (reservation.is_success){
+		map(0x00000000, 0x00000000, 1, AllocationGranularity::Page);
+		auto descriptor = get_page_descriptor(0x00000000);
+		if (descriptor.is_success){
+			*descriptor.value |= 0x1; //NX bit
+		}
+	}
 }
 
 uint32_t * PrePagingPageTable::create_second_level_table() {
@@ -61,6 +59,7 @@ uint32_t * PrePagingPageTable::create_second_level_table() {
 	return second_level_table;
 }
 
+//TODO: fix memory leaks
 PrePagingPageTable::~PrePagingPageTable() {
 	/*//free any second level tables that might have been allocated
 	for (uint32_t i = 0; i < MAX_SECOND_LEVEL_TABLES; i++){
@@ -75,6 +74,41 @@ PrePagingPageTable::~PrePagingPageTable() {
 	uintptr_t page_base = (uintptr_t)first_level_table;
 	for (uint32_t i = 0; i < first_level_num_entries / (PAGE_SIZE / sizeof(uint32_t)); i++){
 		page_alloc::ref_release(page_base + i * 0x1000); //decrement the reference counts on the four pages
+	}
+}
+
+PageTableBase::~PageTableBase() {
+	//release every page that has been allocated
+	uint32_t* first_level_table = get_first_level_table_address();
+	for (uint32_t i = 0; i < first_level_num_entries; i++){
+		uint32_t & first_level_entry = first_level_table[i];
+		
+		if ((first_level_entry & 0x3) == 0x1){
+			//second-level table
+			uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
+			
+			for (uint32_t j = 0; j < SECOND_LEVEL_ENTRIES; j++){
+				uint32_t & second_level_entry = second_level_table[j];
+				
+				if (second_level_entry & 0x2){
+					uintptr_t physical_address = second_level_entry & 0xfffff000;
+					page_alloc::ref_release(physical_address);
+				}
+			}
+			
+			//TODO: free table?
+		} else if ((first_level_entry & 0x3) == 0x2){
+			uintptr_t physical_address;
+			if (first_level_entry & 0x00040000) {
+				//supersection
+				physical_address = (first_level_entry & 0xff000000) | ((i << 20) & 0x00f00000);
+			} else {
+				//regular section
+				physical_address = first_level_entry & 0xfff00000;
+			}
+			
+			page_alloc::ref_release(physical_address, SECOND_LEVEL_ENTRIES);
+		}
 	}
 }
 
@@ -157,6 +191,7 @@ bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, Allocati
 	return true;
 }
 
+//TODO: cleanup on partial failure
 bool PageTableBase::map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
 	auto lock = spinlock_cs.acquire();
 	
@@ -182,6 +217,9 @@ bool PageTableBase::map(uintptr_t virtual_address, uintptr_t physical_address, u
 		
 		if (!success) return false;
 	}
+	
+	//bump reference counts
+	page_alloc::ref_acquire(physical_address, units * get_allocation_pages(granularity));
 	
 	return true;
 }

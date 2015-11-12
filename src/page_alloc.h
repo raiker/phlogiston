@@ -13,6 +13,7 @@ namespace page_alloc {
 	uintptr_t alloc(uint32_t size);
 	uint32_t ref_acquire(uintptr_t page);
 	uint32_t ref_release(uintptr_t page);
+	void ref_acquire(uintptr_t page, uint32_t size);
 	void ref_release(uintptr_t page, uint32_t size);
 	MemStats get_mem_stats();
 }
