@@ -184,6 +184,65 @@ bool test_reservations() {
 		uart_puts("failed\r\n");
 	}
 	
+	//nonspecific reservation
+	uart_puts("Nonspecific single page reservation: ");
+	{
+		auto reservation = table.reserve(1, AllocationGranularity::Page);
+		all_passed &= reservation.is_success;
+		
+		auto check = table.get_unit_state(reservation.value, AllocationGranularity::Page);
+		all_passed &= check.is_success && check.value == UnitState::Reserved;
+	}
+	if (all_passed) {
+		uart_puts("passed\r\n");
+	} else {
+		uart_puts("failed\r\n");
+	}
+	
+	uart_puts("Nonspecific single section reservation: ");
+	{
+		auto reservation = table.reserve(1, AllocationGranularity::Section);
+		all_passed &= reservation.is_success;
+		
+		auto check = table.get_unit_state(reservation.value, AllocationGranularity::Section);
+		all_passed &= check.is_success && check.value == UnitState::Reserved;
+	}
+	if (all_passed) {
+		uart_puts("passed\r\n");
+	} else {
+		uart_puts("failed\r\n");
+	}
+	
+	uart_puts("Nonspecific single supersection reservation: ");
+	{
+		auto reservation = table.reserve(1, AllocationGranularity::Supersection);
+		all_passed &= reservation.is_success;
+		
+		auto check = table.get_unit_state(reservation.value, AllocationGranularity::Supersection);
+		all_passed &= check.is_success && check.value == UnitState::Reserved;
+	}
+	if (all_passed) {
+		uart_puts("passed\r\n");
+	} else {
+		uart_puts("failed\r\n");
+	}
+	
+	uart_puts("Nonspecific multi-page reservation: ");
+	{
+		auto reservation = table.reserve(64, AllocationGranularity::Page);
+		all_passed &= reservation.is_success;
+		
+		for (uint32_t i = 0, addr = reservation.value; i < 64; i++, addr += 0x1000){
+			auto check = table.get_unit_state(addr, AllocationGranularity::Page);
+			all_passed &= check.is_success && check.value == UnitState::Reserved;
+		}
+	}
+	if (all_passed) {
+		uart_puts("passed\r\n");
+	} else {
+		uart_puts("failed\r\n");
+	}
+	
 	uart_putline();
 	
 	table.print_table_info();
