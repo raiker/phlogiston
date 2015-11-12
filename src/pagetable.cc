@@ -660,6 +660,86 @@ uint32_t * PrePagingPageTable::get_second_level_table_address(uintptr_t physical
 	return (uint32_t*)physical_base_address;
 }
 
+UnitState get_state_from_descriptor(uint32_t descriptor){
+	if ((descriptor & 0x7) == 0){
+		return UnitState::Free;
+	} else if ((descriptor & 0x7) == 4){
+		return UnitState::Reserved;
+	} else {
+		return UnitState::Committed;
+	}
+}
+
+Result<UnitState> PageTableBase::get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity) {
+	auto lock = spinlock_cs.acquire();
+	
+	switch (granularity){
+		case AllocationGranularity::Page:
+			{
+				Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address, false);
+				if (section_descriptor.is_success){
+					//it's mapped as a section
+					return Result<UnitState>::success(get_state_from_descriptor(*section_descriptor.value));
+				}
+				//it's mapped as a second-level table
+				Result<uint32_t*> page_descriptor = get_page_descriptor(virtual_address);
+				if (!page_descriptor.is_success){
+					return Result<UnitState>::failure();
+				}
+				
+				return Result<UnitState>::success(get_state_from_descriptor(*page_descriptor.value));
+			}
+		case AllocationGranularity::Section:
+			{
+				Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address, false);
+				if (section_descriptor.is_success){
+					//it's mapped as a section
+					return Result<UnitState>::success(get_state_from_descriptor(*section_descriptor.value));
+				} else {
+					return Result<UnitState>::failure();
+				}
+			}
+		case AllocationGranularity::Supersection:
+			{
+				virtual_address &= 0xff000000;
+				bool all_free = true;
+				bool all_reserved = true;
+				bool all_committed = true;
+				
+				for (uint32_t i = 0; i < 16; i++){
+					Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address + i * SECTION_SIZE, false);
+					if (section_descriptor.is_success){
+						//it's mapped as a supersection
+						if ((*section_descriptor.value & 0x7) == 0){
+							all_reserved = false;
+							all_committed = false;
+						} else if ((*section_descriptor.value & 0x7) == 4){
+							all_free = false;
+							all_committed = false;
+						} else {
+							all_free = false;
+							all_reserved = false;
+						}
+					} else {
+						return Result<UnitState>::failure();
+					}
+				}
+				
+				if (all_free){
+					return Result<UnitState>::success(UnitState::Free);
+				} else if (all_reserved){
+					return Result<UnitState>::success(UnitState::Reserved);
+				} else if (all_committed){
+					return Result<UnitState>::success(UnitState::Committed);
+				} else {
+					return Result<UnitState>::failure();
+				}
+			}
+		default:
+			return Result<UnitState>::failure();
+	}
+}
+
 Result<uintptr_t> PageTableBase::virtual_to_physical(uintptr_t virtual_address) {
 	auto lock = spinlock_cs.acquire();
 	
