@@ -23,14 +23,16 @@ static uint32_t get_allocation_pages(AllocationGranularity granularity){
 // 0 = page is not reserved
 // 1 = page is reserved
 
-PrePagingPageTable::PrePagingPageTable(bool is_supervisor) {
+PrePagingPageTable::PrePagingPageTable(bool is_supervisor, bool is_reference_counted) {
+	first_level_table = (uint32_t*)page_alloc::alloc(4); //4 pages for both modes
+	
+	reference_counted = is_reference_counted;
+	
 	if (is_supervisor){
 		//supervisor (4k entries)
-		first_level_table = (uint32_t*)page_alloc::alloc(4); //4 pages
 		first_level_num_entries = FIRST_LEVEL_SUPERVISOR_ENTRIES;
 	} else {
 		//user (2k entries)
-		first_level_table = (uint32_t*)page_alloc::alloc(2); //2 pages
 		first_level_num_entries = FIRST_LEVEL_USER_ENTRIES;
 	}
 	
@@ -39,14 +41,14 @@ PrePagingPageTable::PrePagingPageTable(bool is_supervisor) {
 	}
 	
 	//allocate the page at 0x00000000 to catch null dereferences
-	auto reservation = reserve(0x00000000, 1, AllocationGranularity::Page);
+	/*auto reservation = reserve(0x00000000, 1, AllocationGranularity::Page);
 	if (reservation.is_success){
 		map(0x00000000, 0x00000000, 1, AllocationGranularity::Page);
 		auto descriptor = get_page_descriptor(0x00000000);
 		if (descriptor.is_success){
 			*descriptor.value |= 0x1; //NX bit
 		}
-	}
+	}*/
 }
 
 uint32_t * PrePagingPageTable::create_second_level_table() {
@@ -59,7 +61,6 @@ uint32_t * PrePagingPageTable::create_second_level_table() {
 	return second_level_table;
 }
 
-//TODO: fix memory leaks
 PrePagingPageTable::~PrePagingPageTable() {
 	//release every page that has been allocated
 	uint32_t* first_level_table = get_first_level_table_address();
@@ -75,11 +76,14 @@ PrePagingPageTable::~PrePagingPageTable() {
 				
 				if (second_level_entry & 0x2){
 					uintptr_t physical_address = second_level_entry & 0xfffff000;
-					page_alloc::ref_release(physical_address);
+					
+					if (reference_counted){
+						page_alloc::ref_release(physical_address);
+					}
 				}
 			}
 			
-			//free table?
+			//free table - done even if the table isn't reference-counted
 			page_alloc::ref_release((uintptr_t)second_level_table);
 		} else if ((first_level_entry & 0x3) == 0x2){
 			uintptr_t physical_address;
@@ -91,22 +95,14 @@ PrePagingPageTable::~PrePagingPageTable() {
 				physical_address = first_level_entry & 0xfff00000;
 			}
 			
-			page_alloc::ref_release(physical_address, SECOND_LEVEL_ENTRIES);
+			if (reference_counted){
+				page_alloc::ref_release(physical_address, SECOND_LEVEL_ENTRIES);
+			}
 		}
 	}
-	
-	/*//free any second level tables that might have been allocated
-	for (uint32_t i = 0; i < MAX_SECOND_LEVEL_TABLES; i++){
-		if (second_level_table_addrs[i].physical_addr != 0x00000000){
-			page_alloc::ref_release(second_level_table_addrs[i].physical_addr);
-		}
-	}
-	
-	//free the second level table addresses page
-	//page_alloc::ref_release(second_level_table_addrs); //need physical address...*/
 	
 	uintptr_t page_base = (uintptr_t)first_level_table;
-	for (uint32_t i = 0; i < first_level_num_entries / (PAGE_SIZE / sizeof(uint32_t)); i++){
+	for (uint32_t i = 0; i < 4; i++){
 		page_alloc::ref_release(page_base + i * 0x1000); //decrement the reference counts on the four pages
 	}
 }
@@ -141,6 +137,7 @@ Result<uintptr_t> PageTableBase::reserve(uintptr_t address, uint32_t units, Allo
 	}
 }
 
+//TODO: handle partial failure
 bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
 #ifdef VERBOSE
 	uart_puts("PageTableBase::allocate(virtual_address=");
@@ -151,6 +148,10 @@ bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, Allocati
 	uart_putdec((uint32_t)granularity);
 	uart_puts(")\r\n");
 #endif
+	
+	if (!reference_counted){
+		panic(PanicCodes::AllocationInNonReferenceCountedTable);
+	}
 	
 	auto lock = spinlock_cs.acquire();
 	
@@ -217,8 +218,10 @@ bool PageTableBase::map(uintptr_t virtual_address, uintptr_t physical_address, u
 		if (!success) return false;
 	}
 	
-	//bump reference counts
-	page_alloc::ref_acquire(physical_address, units * get_allocation_pages(granularity));
+	if (reference_counted){
+		//bump reference counts
+		page_alloc::ref_acquire(physical_address, units * get_allocation_pages(granularity));
+	}
 	
 	return true;
 }
@@ -970,11 +973,11 @@ void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t ba
 uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularity) {
 	switch (granularity){
 		case AllocationGranularity::Page:
-			return bytes / PAGE_SIZE + (bytes & (PAGE_SIZE-1)) ? 1 : 0;
+			return bytes / PAGE_SIZE + ((bytes & (PAGE_SIZE-1)) ? 1 : 0);
 		case AllocationGranularity::Section:
-			return bytes / SECTION_SIZE + (bytes & (SECTION_SIZE-1)) ? 1 : 0;
+			return bytes / SECTION_SIZE + ((bytes & (SECTION_SIZE-1)) ? 1 : 0);
 		case AllocationGranularity::Supersection:
-			return bytes / SUPERSECTION_SIZE + (bytes & (SUPERSECTION_SIZE-1)) ? 1 : 0;
+			return bytes / SUPERSECTION_SIZE + ((bytes & (SUPERSECTION_SIZE-1)) ? 1 : 0);
 		default:
 			panic(PanicCodes::IncompatibleParameter);
 	}

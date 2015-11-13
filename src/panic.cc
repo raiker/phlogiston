@@ -37,6 +37,10 @@ void panic(PanicCodes code){
 			break;
 		case PanicCodes::PureVirtualFunctionCall:
 			msg = "Error calling pure virtual function";
+			break;
+		case PanicCodes::AllocationInNonReferenceCountedTable:
+			msg = "Allocation in non-reference-counted page table";
+			break;
 		default:
 			msg = "Unknown error";
 			break;

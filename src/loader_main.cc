@@ -7,7 +7,7 @@
 #include "pagetable.h"
 #include "runtime_tests.h"
 
-#define RUN_TESTS
+//#define RUN_TESTS
 
 extern uint32_t _binary_kernel_stripped_elf_start;
   
@@ -83,30 +83,6 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		[undef_stack] "r" (undef_stack)
 		);
 	
-	/*page_alloc::MemStats stats = page_alloc::get_mem_stats();
-	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_puts("\r\n");
-	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_puts("\r\n");
-	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_puts("\r\n");
-	
-	uintptr_t a1 = page_alloc::alloc(1);
-	uintptr_t a2 = page_alloc::alloc(4);
-	uintptr_t a3 = page_alloc::alloc(256);
-	
-	uart_puthex(a1); uart_puts("\r\n");
-	uart_puthex(a2); uart_puts("\r\n");
-	uart_puthex(a3); uart_puts("\r\n");
-	
-	stats = page_alloc::get_mem_stats();
-	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_puts("\r\n");
-	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_puts("\r\n");
-	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_puts("\r\n");*/
-	
-	/*for (uint32_t i = 0; i < 10000000; i++){
-		uart_puthex(i);
-		uart_puts("\r\n");
-		page_alloc::alloc(256);
-	}*/
-	
 #ifdef RUN_TESTS
 	if (test_pagetables()){
 		uart_puts("All tests passed\r\n");
@@ -115,31 +91,46 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	}
 #else
 	
-	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
- 
-	page_alloc::MemStats stats;
+	PrePagingPageTable supervisor_table(true);
 	
-	{
-		PrePagingPageTable supervisor_table(true);
+	if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table)){
+		uart_puts("Failed to load kernel\r\n");
+		panic(PanicCodes::AssertionFailure);
+	}
 		
-		if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table)){
-			uart_puts("Failed to load kernel\r\n");
-		}
-			
-		supervisor_table.print_table_info();
+	supervisor_table.print_table_info();
+
+	uart_putline();
 	
-		uart_putline();
+	//page table to handle identity-mapping the physical memory space
+	PrePagingPageTable identity_overlay(false, false);
 	
-		stats = page_alloc::get_mem_stats();
-		uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_putline();
-		uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_putline();
-		uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_putline();
+	//map all of ram
+	uint32_t nsections = get_num_allocation_units(system_memory.size, AllocationGranularity::Section);	
+	if (!identity_overlay.reserve(0x00000000, nsections, AllocationGranularity::Section).is_success){
+		uart_puts("Failed to reserve identity memory\r\n");
+		panic(PanicCodes::AssertionFailure);
 	}
 	
-	stats = page_alloc::get_mem_stats();
-	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_putline();
-	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_putline();
-	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_putline();
+	if (!identity_overlay.map(0x00000000, 0x00000000, nsections, AllocationGranularity::Section)){
+		uart_puts("Failed to map identity\r\n");
+		panic(PanicCodes::AssertionFailure);
+	}
+	
+	//map mmio
+	nsections = 16;
+	if (!identity_overlay.reserve(0x20000000, nsections, AllocationGranularity::Section).is_success){
+		uart_puts("Failed to reserve identity memory\r\n");
+		panic(PanicCodes::AssertionFailure);
+	}
+	
+	if (!identity_overlay.map(0x20000000, 0x20000000, nsections, AllocationGranularity::Section)){
+		uart_puts("Failed to map identity\r\n");
+		panic(PanicCodes::AssertionFailure);
+	}
+	
+	identity_overlay.print_table_info();
+	
 #endif
 	while ( true )
 		uart_putc(uart_getc());

@@ -96,7 +96,7 @@ namespace page_alloc {
 					uart_puts("page_alloc: Acquire ");
 					uart_puthex((entry+i)*PAGE_SIZE);
 					uart_putline();
-#endif VERBOSE
+#endif
 				}
 				retval = entry * PAGE_SIZE;
 				allocated_pages += size;

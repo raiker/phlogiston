@@ -35,6 +35,7 @@ uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularit
 class PageTableBase {
 protected:
 	uint32_t first_level_num_entries; //should be 4096 or 2048
+	bool reference_counted;
 	Spinlock spinlock_cs;
 
 	Result<uintptr_t> virtual_to_physical_internal(uintptr_t virtual_address);
@@ -101,7 +102,7 @@ class PrePagingPageTable : public PageTableBase {
 	virtual uint32_t * get_second_level_table_address(uintptr_t physical_base_address);
 	
 public:
-	PrePagingPageTable(bool is_supervisor);
+	PrePagingPageTable(bool is_supervisor, bool is_reference_counted = true);
 	PrePagingPageTable(const PrePagingPageTable &other) = delete; //we don't want this to be copy-constructed
 	virtual ~PrePagingPageTable();
 	
