@@ -98,7 +98,7 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		panic(PanicCodes::AssertionFailure);
 	}
 		
-	supervisor_table.print_table_info();
+	//supervisor_table.print_table_info();
 
 	uart_putline();
 	
@@ -129,8 +129,15 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		panic(PanicCodes::AssertionFailure);
 	}
 	
-	identity_overlay.print_table_info();
+	//identity_overlay.print_table_info();
 	
+	PagingManager::SetLowerPageTable(identity_overlay);
+	PagingManager::SetUpperPageTable(supervisor_table);
+	PagingManager::SetPagingMode(true, true);
+	PagingManager::EnablePaging();
+	
+	uart_puthex(*((uint32_t*)0x80000000));
+	uart_putline();
 #endif
 	while ( true )
 		uart_putc(uart_getc());

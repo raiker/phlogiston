@@ -34,6 +34,8 @@ uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularit
 
 class PageTable {
 private:
+	friend class PagingManager;
+	
 	uint32_t * first_level_table;
 	uint32_t first_level_num_entries; //should be 4096 or 2048
 	bool reference_counted;
@@ -88,4 +90,13 @@ public:
 	
 	void print_table_info();
 };
+
+class PagingManager {
+public:
+	static void SetLowerPageTable(const PageTable &table);
+	static void SetUpperPageTable(const PageTable &table);
+	static void SetPagingMode(bool lower_enable, bool upper_enable);
+	static void EnablePaging();
+};
+
 

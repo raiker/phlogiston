@@ -983,3 +983,41 @@ uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularit
 	}
 }
 
+void PagingManager::SetLowerPageTable(const PageTable &table) {
+	uintptr_t ttb = (uintptr_t)table.first_level_table & 0xffffc000;
+	asm volatile("mcr p15, 0, %[ttb], c2, c0, 0" : : [ttb] "r" (ttb));
+}
+
+void PagingManager::SetUpperPageTable(const PageTable &table) {
+	uintptr_t ttb = (uintptr_t)table.first_level_table & 0xffffc000;
+	asm volatile("mcr p15, 0, %[ttb], c2, c0, 1" : : [ttb] "r" (ttb));
+}
+
+void PagingManager::SetPagingMode(bool lower_enable, bool upper_enable){
+	uint32_t control = 0x00000001;
+	if (!lower_enable) control |= 0x10;
+	if (!upper_enable) control |= 0x20;
+	
+	asm volatile ("mcr p15, 0, %[control], c2, c0, 2" : : [control] "r" (control));
+	
+	//also set the domains
+	asm volatile ("mcr p15, 0, %[domains], c3, c0, 0" : : [domains] "r" (0xffffffff));
+}
+
+void PagingManager::EnablePaging(){
+	//some sort of identity mapping MUST be set up before calling this
+	
+	//disable caches
+	uint32_t status;
+	asm volatile ("mrc p15, 0, %[status], c1, c0, 0" : [status] "=r" (status));
+	status = status & 0xffffeffb;
+	asm volatile ("mcr p15, 0, %[status], c1, c0, 0" : : [status] "r" (status));
+	
+	//invalidate icache
+	asm volatile ("mcr p15, 0, %[dummy], c7, c5, 0" : : [dummy] "r" (0));
+	
+	//enable mmu ARMv6 mode and paging
+	status = status | 0x00800001;
+	asm volatile ("mcr p15, 0, %[status], c1, c0, 0" : : [status] "r" (status));
+}
+
