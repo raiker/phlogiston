@@ -1,9 +1,10 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <cstdbool>
+#include <cstddef>
+#include <cstdint>
 
+const size_t SUPERSECTION_SIZE = 0x1000000;
 const size_t SECTION_SIZE = 0x100000;
 const size_t PAGE_SIZE = 0x1000;
 

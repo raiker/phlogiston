@@ -35,6 +35,8 @@ void panic(PanicCodes code){
 		case PanicCodes::AssertionFailure:
 			msg = "Assertion failure";
 			break;
+		case PanicCodes::PureVirtualFunctionCall:
+			msg = "Error calling pure virtual function";
 		default:
 			msg = "Unknown error";
 			break;

@@ -4,16 +4,16 @@
 #include "page_alloc.h"
 #include "panic.h"
 #include "elf_loader.h"
+#include "pagetable.h"
+#include "runtime_tests.h"
+
+#define RUN_TESTS
 
 extern uint32_t _binary_kernel_stripped_elf_start;
   
 extern "C" /* Use C linkage for kernel_main. */
 void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 {
-	//(void) r0;
-	//(void) r1;
-	//(void) atags;
- 
 	uart_init();
 	uart_puts("Hello, kernel World!\r\n");
 	
@@ -30,25 +30,19 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		panic(PanicCodes::NonZeroBase);
 	}
 	
-	//set up stacks
+	//set up temporary stacks
 	asm volatile(
-		"mrs r4, cpsr\n"
-		"bic r4, r4, #0x1f\n" //clear out mode bits
-		"orr r5, r4, #0x11\n" //FIQ mode
-		"msr cpsr_c, r5\n" //switch to mode
+		"cpsid aif\n" //disable interrupts
+		"cps #0x11\n" //FIQ mode
 		"ldr sp, =0x00808000\n"
-		"orr r5, r4, #0x12\n" //IRQ mode
-		"msr cpsr_c, r5\n" //switch to mode
+		"cps #0x12\n" //IRQ mode
 		"ldr sp, =0x00810000\n"
-		"orr r5, r4, #0x17\n" //Abort mode
-		"msr cpsr_c, r5\n" //switch to mode
+		"cps #0x17\n" //Abort mode
 		"ldr sp, =0x00818000\n"
-		"orr r5, r4, #0x1b\n" //Undefined mode
-		"msr cpsr_c, r5\n" //switch to mode
+		"cps #0x1b\n" //Undefined mode
 		"ldr sp, =0x00820000\n"
-		"orr r5, r4, #0x13\n" //Supervisor mode
-		"msr cpsr_c, r5" //switch to mode
-		: : : "r4", "r5");
+		"cps #0x13\n" //Supervisor mode
+		);
 	
 	//set up exception vector
 	asm volatile(
@@ -60,13 +54,34 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	uart_puts("Enabling interrupts\r\n");
 	
-	asm volatile(
-		"mrs r4, cpsr\n"
-		"bic r4, r4, #0xc0\n" //clear out interrupt bits
-		"msr cpsr_c, r4" //enable interrupts
-		: : : "r4");
+	//enable interrupts
+	asm volatile("cpsie aif");
 	
 	page_alloc::init(system_memory.size);
+	
+	uintptr_t fiq_stack = page_alloc::alloc(1) + PAGE_SIZE;
+	uintptr_t irq_stack = page_alloc::alloc(1) + PAGE_SIZE;
+	uintptr_t abort_stack = page_alloc::alloc(1) + PAGE_SIZE;
+	uintptr_t undef_stack = page_alloc::alloc(1) + PAGE_SIZE;
+	
+	asm volatile(
+		"cpsid aif\n" //disable interrupts
+		"cps #0x11\n" //FIQ mode
+		"mov sp, %[fiq_stack]\n"
+		"cps #0x12\n" //IRQ mode
+		"mov sp, %[irq_stack]\n"
+		"cps #0x17\n" //Abort mode
+		"mov sp, %[abort_stack]\n"
+		"cps #0x1b\n" //Undefined mode
+		"mov sp, %[undef_stack]\n"
+		"cps #0x13\n" //Supervisor mode
+		"cpsie aif" //re-enable interrupts
+		: :
+		[fiq_stack] "r" (fiq_stack),
+		[irq_stack] "r" (irq_stack),
+		[abort_stack] "r" (abort_stack),
+		[undef_stack] "r" (undef_stack)
+		);
 	
 	/*page_alloc::MemStats stats = page_alloc::get_mem_stats();
 	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_puts("\r\n");
@@ -86,8 +101,46 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_puts("\r\n");
 	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_puts("\r\n");*/
 	
+	/*for (uint32_t i = 0; i < 10000000; i++){
+		uart_puthex(i);
+		uart_puts("\r\n");
+		page_alloc::alloc(256);
+	}*/
+	
+#ifdef RUN_TESTS
+	if (test_pagetables()){
+		uart_puts("All tests passed\r\n");
+	} else {
+		uart_puts("Some tests failed\r\n");
+	}
+#else
+	
 	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
  
+	page_alloc::MemStats stats;
+	
+	{
+		PrePagingPageTable supervisor_table(true);
+		
+		if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table)){
+			uart_puts("Failed to load kernel\r\n");
+		}
+			
+		supervisor_table.print_table_info();
+	
+		uart_putline();
+	
+		stats = page_alloc::get_mem_stats();
+		uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_putline();
+		uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_putline();
+		uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_putline();
+	}
+	
+	stats = page_alloc::get_mem_stats();
+	uart_puts("Total mem: "); uart_puthex(stats.totalmem); uart_putline();
+	uart_puts("Free mem:  "); uart_puthex(stats.freemem); uart_putline();
+	uart_puts("Used mem:  "); uart_puthex(stats.usedmem); uart_putline();
+#endif
 	while ( true )
 		uart_putc(uart_getc());
 }
@@ -95,6 +148,10 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 extern "C"
 uint32_t svc_entry(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
 	uart_puts("System call!\r\n");
+	uart_puts("a: "); uart_puthex(a); uart_puts("\r\n");
+	uart_puts("b: "); uart_puthex(b); uart_puts("\r\n");
+	uart_puts("c: "); uart_puthex(c); uart_puts("\r\n");
+	uart_puts("d: "); uart_puthex(d); uart_puts("\r\n");
 	return 0;
 }
 
@@ -120,12 +177,12 @@ void data_abort_handler(uint32_t saved_pc){
 }
 
 extern "C"
-void irq_handler(uint32_t saved_pc){
+void irq_handler(){
 	uart_puts("IRQ triggered\r\n");
 }
 
 extern "C"
-void fiq_handler(uint32_t saved_pc){
+void fiq_handler(){
 	uart_puts("FIQ triggered\r\n");
 }
 

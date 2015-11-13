@@ -27,14 +27,11 @@ namespace page_alloc {
 		uint32_t pages_used_for_table = (num_pages * sizeof(refcount_t) + PAGE_SIZE - 1) / PAGE_SIZE;
 		uart_puts("pages_used_for_table = "); uart_puthex(pages_used_for_table); uart_puts("\r\n");
 		
-		uint32_t first_used_page = ((uintptr_t)&__start) / PAGE_SIZE;
+		//uint32_t first_used_page = ((uintptr_t)&__start) / PAGE_SIZE;
 		uint32_t first_free_page = ((uintptr_t)&__end) / PAGE_SIZE + pages_used_for_table;
 	
 		for (uint32_t i = 0; i < num_pages; i++){
-			if (
-				i == 0 || //we allocate page 0 so that nullptr can be used as an invalid return value
-				((i >= first_used_page) && (i < first_free_page)))
-			{
+			if (i < first_free_page){
 				refcount_table[i] = 1;
 				allocated_pages++;
 			} else {
@@ -64,8 +61,9 @@ namespace page_alloc {
 		//pages are 1 page (4KiB) of memory, aligned to 4KiB
 		//pagetables are 4 pages (16KiB) of memory, aligned to 16KiB
 		//sections are 256 pages (1MiB) of memory, aligned to 1MiB
+		//supersections are 4096 pages (16MiB) of memory, aligned to 16MiB
 		
-		if (size != 1 && size != 4 && size != 256) {
+		if (size != 1 && size != 4 && size != 256 && size != 4096) {
 			panic(PanicCodes::IncompatibleParameter);
 		}
 		
@@ -75,8 +73,9 @@ namespace page_alloc {
 		static uint32_t next_alloc_1 = 0; //page
 		static uint32_t next_alloc_4 = 0; //pagetable
 		static uint32_t next_alloc_256 = 0; //section
+		static uint32_t next_alloc_4096 = 0; //supersection
 		
-		uint32_t &next_alloc = (size == 1) ? next_alloc_1 : (size == 4) ? next_alloc_4 : next_alloc_256;
+		uint32_t &next_alloc = (size == 1) ? next_alloc_1 : (size == 4) ? next_alloc_4 : (size == 256) ? next_alloc_256 : next_alloc_4096;
 		
 		uint32_t entry = next_alloc;
 		uintptr_t retval = 0;
@@ -93,6 +92,11 @@ namespace page_alloc {
 				//use this section
 				for (uint32_t i = 0; i < size; i++) {
 					refcount_table[entry+i] = 1;
+#ifdef VERBOSE					
+					uart_puts("page_alloc: Acquire ");
+					uart_puthex((entry+i)*PAGE_SIZE);
+					uart_putline();
+#endif VERBOSE
 				}
 				retval = entry * PAGE_SIZE;
 				allocated_pages += size;
@@ -124,11 +128,19 @@ namespace page_alloc {
 		
 		uint32_t page_ix = page / PAGE_SIZE;
 		
+		if (page_ix > num_pages) return 0; //no-op (good for mmio etc)
+		
 		if (refcount_table[page_ix] == 0) {
 			panic(PanicCodes::AddRefToUnallocatedPage);
 		} else {
 			retval = ++refcount_table[page_ix];
 		}
+		
+#ifdef VERBOSE					
+		uart_puts("page_alloc: Acquire ");
+		uart_puthex(page);
+		uart_putline();
+#endif
 
 		//exit critical section
 		//spinlock_flag.clear(std::memory_order_release);
@@ -144,6 +156,8 @@ namespace page_alloc {
 		
 		uint32_t page_ix = page / PAGE_SIZE;
 		
+		if (page_ix > num_pages) return 0; //no-op (good for mmio etc)
+		
 		if (refcount_table[page_ix] == 0) {
 			panic(PanicCodes::ReleaseUnallocatedPage);
 		} else {
@@ -154,10 +168,28 @@ namespace page_alloc {
 			allocated_pages--;
 		}
 
+#ifdef VERBOSE					
+		uart_puts("page_alloc: Release ");
+		uart_puthex(page);
+		uart_putline();
+#endif
+
 		//exit critical section
 		//spinlock_flag.clear(std::memory_order_release);
 		
 		return retval;
+	}
+	
+	void ref_acquire(uintptr_t page, uint32_t size){
+		for (uint32_t i = 0; i < size; i++){
+			ref_acquire(page + i * PAGE_SIZE);
+		}
+	}
+	
+	void ref_release(uintptr_t page, uint32_t size){
+		for (uint32_t i = 0; i < size; i++){
+			ref_release(page + i * PAGE_SIZE);
+		}
 	}
 }
 

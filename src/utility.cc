@@ -1,4 +1,5 @@
 #include "utility.h"
+#include "panic.h"
 
 /* Loop <delay> times in a way that the compiler won't optimize away. */
 void delay(int32_t count){
@@ -13,4 +14,16 @@ size_t strlen(const char* str){
 	return ret;
 }
 
+//needed to permit pure virtual functions
+extern "C" void __cxa_pure_virtual(){
+	panic(PanicCodes::PureVirtualFunctionCall);
+}
+
+void operator delete(void* ptr){
+	panic(PanicCodes::AssertionFailure);
+}
+
+void operator delete(void* ptr, unsigned int size){
+	panic(PanicCodes::AssertionFailure);
+}
 
