@@ -91,7 +91,7 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	}
 #else
 	
-	PrePagingPageTable supervisor_table(true);
+	PageTable supervisor_table(true);
 	
 	if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table)){
 		uart_puts("Failed to load kernel\r\n");
@@ -103,7 +103,7 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	uart_putline();
 	
 	//page table to handle identity-mapping the physical memory space
-	PrePagingPageTable identity_overlay(false, false);
+	PageTable identity_overlay(false, false);
 	
 	//map all of ram
 	uint32_t nsections = get_num_allocation_units(system_memory.size, AllocationGranularity::Section);	

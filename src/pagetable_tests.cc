@@ -10,7 +10,7 @@ bool test_reservations() {
 
 	{
 		uart_puts("begin constructor\r\n");
-		PrePagingPageTable table(true);
+		PageTable table(true);
 	
 		uart_puts("end constructor\r\n");
 	

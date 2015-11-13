@@ -32,18 +32,20 @@ enum class UnitState {
 
 uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularity);
 
-class PageTableBase {
-protected:
+class PageTable {
+private:
+	uint32_t * first_level_table;
 	uint32_t first_level_num_entries; //should be 4096 or 2048
 	bool reference_counted;
 	Spinlock spinlock_cs;
 
 	Result<uintptr_t> virtual_to_physical_internal(uintptr_t virtual_address);
 	Result<uintptr_t> physical_to_virtual_internal(uintptr_t physical_address);
-	virtual uint32_t * create_second_level_table() = 0;
 	
-	virtual uint32_t * get_first_level_table_address() = 0;
-	virtual uint32_t * get_second_level_table_address(uintptr_t physical_base_address) = 0;
+	uint32_t * create_second_level_table();
+	
+	uint32_t * get_first_level_table_address();
+	uint32_t * get_second_level_table_address(uintptr_t physical_base_address);
 	
 	void print_second_level_table_info(uint32_t * table, uintptr_t base);
 	
@@ -65,10 +67,9 @@ protected:
 	Result<uint32_t*> get_page_descriptor(uintptr_t virtual_address);
 	Result<uint32_t*> get_section_descriptor(uintptr_t virtual_address, bool allow_second_level);
 public:
-	virtual ~PageTableBase() = default;
-	
-	//Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity); //virtual address
-	//bool free(uintptr_t start, size_t bytes); //virtual address
+	PageTable(bool is_supervisor, bool is_reference_counted = true);
+	PageTable(const PageTable &other) = delete; //we don't want this to be copy-constructed
+	~PageTable();
 	
 	Result<uintptr_t> reserve(uint32_t units, AllocationGranularity granularity);
 	Result<uintptr_t> reserve(uintptr_t address, uint32_t units, AllocationGranularity granularity);
@@ -86,29 +87,5 @@ public:
 	Result<uintptr_t> physical_to_virtual(uintptr_t physical_address);
 	
 	void print_table_info();
-};
-
-class PrePagingPageTable : public PageTableBase {
-	uint32_t * first_level_table;
-	Spinlock spinlock_cs;
-	//SecondLevelTableAddr (* second_level_table_addrs)[];
-	
-	//virtual Result<uintptr_t> virtual_to_physical_internal(uintptr_t virtual_address);
-	//virtual Result<uintptr_t> physical_to_virtual_internal(uintptr_t physical_address);
-	
-	virtual uint32_t * create_second_level_table();
-	
-	virtual uint32_t * get_first_level_table_address();
-	virtual uint32_t * get_second_level_table_address(uintptr_t physical_base_address);
-	
-public:
-	PrePagingPageTable(bool is_supervisor, bool is_reference_counted = true);
-	PrePagingPageTable(const PrePagingPageTable &other) = delete; //we don't want this to be copy-constructed
-	virtual ~PrePagingPageTable();
-	
-	//virtual Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity);
-};
-
-class PageTable {
 };
 

@@ -23,7 +23,7 @@ static uint32_t get_allocation_pages(AllocationGranularity granularity){
 // 0 = page is not reserved
 // 1 = page is reserved
 
-PrePagingPageTable::PrePagingPageTable(bool is_supervisor, bool is_reference_counted) {
+PageTable::PageTable(bool is_supervisor, bool is_reference_counted) {
 	first_level_table = (uint32_t*)page_alloc::alloc(4); //4 pages for both modes
 	
 	reference_counted = is_reference_counted;
@@ -51,7 +51,7 @@ PrePagingPageTable::PrePagingPageTable(bool is_supervisor, bool is_reference_cou
 	}*/
 }
 
-uint32_t * PrePagingPageTable::create_second_level_table() {
+uint32_t * PageTable::create_second_level_table() {
 	uint32_t * second_level_table = (uint32_t*)page_alloc::alloc(1); //4 times as much space as we need...
 	
 	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++) {
@@ -61,7 +61,7 @@ uint32_t * PrePagingPageTable::create_second_level_table() {
 	return second_level_table;
 }
 
-PrePagingPageTable::~PrePagingPageTable() {
+PageTable::~PageTable() {
 	//release every page that has been allocated
 	uint32_t* first_level_table = get_first_level_table_address();
 	for (uint32_t i = 0; i < first_level_num_entries; i++){
@@ -107,7 +107,7 @@ PrePagingPageTable::~PrePagingPageTable() {
 	}
 }
 
-Result<uintptr_t> PageTableBase::reserve(uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t> PageTable::reserve(uint32_t units, AllocationGranularity granularity){
 	auto lock = spinlock_cs.acquire();
 	
 	switch (granularity){
@@ -122,7 +122,7 @@ Result<uintptr_t> PageTableBase::reserve(uint32_t units, AllocationGranularity g
 	}
 }
 
-Result<uintptr_t> PageTableBase::reserve(uintptr_t address, uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t> PageTable::reserve(uintptr_t address, uint32_t units, AllocationGranularity granularity){
 	auto lock = spinlock_cs.acquire();
 	
 	switch (granularity){
@@ -138,9 +138,9 @@ Result<uintptr_t> PageTableBase::reserve(uintptr_t address, uint32_t units, Allo
 }
 
 //TODO: handle partial failure
-bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
+bool PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
 #ifdef VERBOSE
-	uart_puts("PageTableBase::allocate(virtual_address=");
+	uart_puts("PageTable::allocate(virtual_address=");
 	uart_puthex(virtual_address);
 	uart_puts(",units=");
 	uart_putdec(units);
@@ -192,7 +192,7 @@ bool PageTableBase::allocate(uintptr_t virtual_address, uint32_t units, Allocati
 }
 
 //TODO: cleanup on partial failure
-bool PageTableBase::map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
+bool PageTable::map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
 	auto lock = spinlock_cs.acquire();
 	
 	for (uint32_t i = 0; i < units; i++){
@@ -226,7 +226,7 @@ bool PageTableBase::map(uintptr_t virtual_address, uintptr_t physical_address, u
 	return true;
 }
 
-Result<uintptr_t> PageTableBase::reserve_allocate(uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t> PageTable::reserve_allocate(uint32_t units, AllocationGranularity granularity){
 	//doesn't acquire lock; convenience method
 	
 	Result<uintptr_t> reservation = reserve(units, granularity);
@@ -238,7 +238,7 @@ Result<uintptr_t> PageTableBase::reserve_allocate(uint32_t units, AllocationGran
 	return reservation;
 }
 
-Result<uintptr_t> PageTableBase::reserve_allocate(uintptr_t address, uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t> PageTable::reserve_allocate(uintptr_t address, uint32_t units, AllocationGranularity granularity){
 	//doesn't acquire lock; convenience method
 	
 	Result<uintptr_t> reservation = reserve(address, units, granularity);
@@ -250,7 +250,7 @@ Result<uintptr_t> PageTableBase::reserve_allocate(uintptr_t address, uint32_t un
 	return reservation;
 }
 
-bool PageTableBase::commit_page(uintptr_t virtual_address, uintptr_t physical_address){
+bool PageTable::commit_page(uintptr_t virtual_address, uintptr_t physical_address){
 	//TODO: Permission bits
 	virtual_address &= 0xfffff000;
 	physical_address &= 0xfffff000;
@@ -268,7 +268,7 @@ bool PageTableBase::commit_page(uintptr_t virtual_address, uintptr_t physical_ad
 	return false;
 }
 
-bool PageTableBase::commit_section(uintptr_t virtual_address, uintptr_t physical_address){
+bool PageTable::commit_section(uintptr_t virtual_address, uintptr_t physical_address){
 	//TODO: Permission bits
 	virtual_address &= 0xfff00000;
 	physical_address &= 0xfff00000;
@@ -286,9 +286,9 @@ bool PageTableBase::commit_section(uintptr_t virtual_address, uintptr_t physical
 	return false;
 }
 
-bool PageTableBase::commit_supersection(uintptr_t virtual_address, uintptr_t physical_address){
+bool PageTable::commit_supersection(uintptr_t virtual_address, uintptr_t physical_address){
 #ifdef VERBOSE
-	uart_puts("PageTableBase::commit_supersection(virtual_address=");
+	uart_puts("PageTable::commit_supersection(virtual_address=");
 	uart_puthex(virtual_address);
 	uart_puts(",physical_address=");
 	uart_puthex(physical_address);
@@ -314,7 +314,7 @@ bool PageTableBase::commit_supersection(uintptr_t virtual_address, uintptr_t phy
 	return false;
 }
 
-Result<uint32_t*> PageTableBase::get_page_descriptor(uintptr_t virtual_address) {
+Result<uint32_t*> PageTable::get_page_descriptor(uintptr_t virtual_address) {
 	uint32_t first_level_index = virtual_address >> 20;
 	
 	if (first_level_index >= first_level_num_entries) {
@@ -333,7 +333,7 @@ Result<uint32_t*> PageTableBase::get_page_descriptor(uintptr_t virtual_address) 
 	return Result<uint32_t*>::failure();
 }
 
-Result<uint32_t*> PageTableBase::get_section_descriptor(uintptr_t virtual_address, bool allow_second_level) {
+Result<uint32_t*> PageTable::get_section_descriptor(uintptr_t virtual_address, bool allow_second_level) {
 	uint32_t first_level_index = virtual_address >> 20;
 	
 	if (first_level_index >= first_level_num_entries) {
@@ -349,7 +349,7 @@ Result<uint32_t*> PageTableBase::get_section_descriptor(uintptr_t virtual_addres
 	}
 }
 
-Result<uintptr_t> PageTableBase::reserve_pages(uint32_t num_pages){
+Result<uintptr_t> PageTable::reserve_pages(uint32_t num_pages){
 	uint32_t * first_level_table = get_first_level_table_address();
 	
 	//trawl through all the second-level page tables looking for a space
@@ -408,7 +408,7 @@ Result<uintptr_t> PageTableBase::reserve_pages(uint32_t num_pages){
 	return Result<uintptr_t>::failure();
 }
 
-Result<uintptr_t> PageTableBase::reserve_sections(uint32_t num_sections) {
+Result<uintptr_t> PageTable::reserve_sections(uint32_t num_sections) {
 	uint32_t * first_level_table = get_first_level_table_address();
 	
 	uint32_t contiguous_free_sections = 0;
@@ -437,7 +437,7 @@ Result<uintptr_t> PageTableBase::reserve_sections(uint32_t num_sections) {
 	return Result<uintptr_t>::failure();
 }
 
-Result<uintptr_t> PageTableBase::reserve_supersections(uint32_t num_supersections) {
+Result<uintptr_t> PageTable::reserve_supersections(uint32_t num_supersections) {
 	uint32_t * first_level_table = get_first_level_table_address();
 	
 	uint32_t contiguous_free_supersections = 0;
@@ -471,7 +471,7 @@ Result<uintptr_t> PageTableBase::reserve_supersections(uint32_t num_supersection
 	return Result<uintptr_t>::failure();
 }
 
-Result<uintptr_t> PageTableBase::reserve_pages(uintptr_t base, uint32_t num_pages) {
+Result<uintptr_t> PageTable::reserve_pages(uintptr_t base, uint32_t num_pages) {
 	base &= 0xfffff000;
 	
 	//check the pages are all reservable
@@ -508,7 +508,7 @@ Result<uintptr_t> PageTableBase::reserve_pages(uintptr_t base, uint32_t num_page
 }
 
 //checks whether num_pages pages can be reserved in the section enclosing base, starting from base
-bool PageTableBase::check_section_partially_reservable(uintptr_t base, uint32_t num_pages) {
+bool PageTable::check_section_partially_reservable(uintptr_t base, uint32_t num_pages) {
 	auto result = get_section_descriptor(base, true);
 	
 	if (!result.is_success) return false;
@@ -531,7 +531,7 @@ bool PageTableBase::check_section_partially_reservable(uintptr_t base, uint32_t 
 }
 
 //check_section_partially_reservable MUST be called beforehand; this performs no checks
-void PageTableBase::reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
+void PageTable::reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
 	auto result = get_section_descriptor(base, true);
 	
 	uint32_t * second_level_table;
@@ -553,7 +553,7 @@ void PageTableBase::reserve_pages_from_section(uintptr_t base, uint32_t num_page
 	}
 }
 
-Result<uintptr_t> PageTableBase::reserve_sections(uintptr_t base, uint32_t num_sections) {
+Result<uintptr_t> PageTable::reserve_sections(uintptr_t base, uint32_t num_sections) {
 	base &= 0xfff00000;
 	
 	for (uint32_t i = 0; i < num_sections; i++){
@@ -571,7 +571,7 @@ Result<uintptr_t> PageTableBase::reserve_sections(uintptr_t base, uint32_t num_s
 	return Result<uintptr_t>::success(base);
 }
 
-Result<uintptr_t> PageTableBase::reserve_supersections(uintptr_t base, uint32_t num_supersections) {
+Result<uintptr_t> PageTable::reserve_supersections(uintptr_t base, uint32_t num_supersections) {
 	base &= 0xff000000;
 	
 	for (uint32_t i = 0; i < num_supersections * 16; i++){
@@ -589,7 +589,7 @@ Result<uintptr_t> PageTableBase::reserve_supersections(uintptr_t base, uint32_t 
 	return Result<uintptr_t>::success(base);
 }
 
-Result<uintptr_t> PageTableBase::virtual_to_physical_internal(uintptr_t virtual_address) {
+Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_address) {
 	//see if the address is mapped
 	uint32_t first_level_index = virtual_address >> 20;
 	
@@ -636,7 +636,7 @@ Result<uintptr_t> PageTableBase::virtual_to_physical_internal(uintptr_t virtual_
 	}
 }
 
-Result<uintptr_t> PageTableBase::physical_to_virtual_internal(uintptr_t physical_address) {
+Result<uintptr_t> PageTable::physical_to_virtual_internal(uintptr_t physical_address) {
 	//very slow, avoid if possible
 	//requires iterating through all the first- and second-level page table entries
 	//returns only the first virtual mapping that matches the target
@@ -692,11 +692,11 @@ Result<uintptr_t> PageTableBase::physical_to_virtual_internal(uintptr_t physical
 	return Result<uintptr_t>::failure();
 }
 
-uint32_t * PrePagingPageTable::get_first_level_table_address() {
+uint32_t * PageTable::get_first_level_table_address() {
 	return first_level_table;
 }
 
-uint32_t * PrePagingPageTable::get_second_level_table_address(uintptr_t physical_base_address){
+uint32_t * PageTable::get_second_level_table_address(uintptr_t physical_base_address){
 	return (uint32_t*)physical_base_address;
 }
 
@@ -710,7 +710,7 @@ UnitState get_state_from_descriptor(uint32_t descriptor){
 	}
 }
 
-Result<UnitState> PageTableBase::get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity) {
+Result<UnitState> PageTable::get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity) {
 	auto lock = spinlock_cs.acquire();
 	
 	switch (granularity){
@@ -780,13 +780,13 @@ Result<UnitState> PageTableBase::get_unit_state(uintptr_t virtual_address, Alloc
 	}
 }
 
-Result<uintptr_t> PageTableBase::virtual_to_physical(uintptr_t virtual_address) {
+Result<uintptr_t> PageTable::virtual_to_physical(uintptr_t virtual_address) {
 	auto lock = spinlock_cs.acquire();
 	
 	return virtual_to_physical_internal(virtual_address);
 }
 
-Result<uintptr_t> PageTableBase::physical_to_virtual(uintptr_t physical_address) {
+Result<uintptr_t> PageTable::physical_to_virtual(uintptr_t physical_address) {
 	auto lock = spinlock_cs.acquire();
 	
 	return physical_to_virtual_internal(physical_address);
@@ -830,7 +830,7 @@ void page_aggregation_display(
 	aggregation_count = 0;
 }
 
-void PageTableBase::print_table_info() {
+void PageTable::print_table_info() {
 	auto lock = spinlock_cs.acquire();
 	
 	uintptr_t aggregation_start;
@@ -914,7 +914,7 @@ void PageTableBase::print_table_info() {
 	}
 }
 
-void PageTableBase::print_second_level_table_info(uint32_t * table, uintptr_t base) {
+void PageTable::print_second_level_table_info(uint32_t * table, uintptr_t base) {
 	uintptr_t aggregation_start;
 	uint32_t aggregation_count = 0;
 	AggregationTypes aggregation_type;
