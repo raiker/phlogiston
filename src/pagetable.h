@@ -64,7 +64,7 @@ protected:
 	Result<uint32_t*> get_page_descriptor(uintptr_t virtual_address);
 	Result<uint32_t*> get_section_descriptor(uintptr_t virtual_address, bool allow_second_level);
 public:
-	virtual ~PageTableBase();
+	virtual ~PageTableBase() = default;
 	
 	//Result<uintptr_t> allocate(size_t bytes, AllocationGranularity granularity); //virtual address
 	//bool free(uintptr_t start, size_t bytes); //virtual address

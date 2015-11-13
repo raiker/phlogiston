@@ -61,23 +61,6 @@ uint32_t * PrePagingPageTable::create_second_level_table() {
 
 //TODO: fix memory leaks
 PrePagingPageTable::~PrePagingPageTable() {
-	/*//free any second level tables that might have been allocated
-	for (uint32_t i = 0; i < MAX_SECOND_LEVEL_TABLES; i++){
-		if (second_level_table_addrs[i].physical_addr != 0x00000000){
-			page_alloc::ref_release(second_level_table_addrs[i].physical_addr);
-		}
-	}
-	
-	//free the second level table addresses page
-	//page_alloc::ref_release(second_level_table_addrs); //need physical address...*/
-	
-	uintptr_t page_base = (uintptr_t)first_level_table;
-	for (uint32_t i = 0; i < first_level_num_entries / (PAGE_SIZE / sizeof(uint32_t)); i++){
-		page_alloc::ref_release(page_base + i * 0x1000); //decrement the reference counts on the four pages
-	}
-}
-
-PageTableBase::~PageTableBase() {
 	//release every page that has been allocated
 	uint32_t* first_level_table = get_first_level_table_address();
 	for (uint32_t i = 0; i < first_level_num_entries; i++){
@@ -96,7 +79,8 @@ PageTableBase::~PageTableBase() {
 				}
 			}
 			
-			//TODO: free table?
+			//free table?
+			page_alloc::ref_release((uintptr_t)second_level_table);
 		} else if ((first_level_entry & 0x3) == 0x2){
 			uintptr_t physical_address;
 			if (first_level_entry & 0x00040000) {
@@ -109,6 +93,21 @@ PageTableBase::~PageTableBase() {
 			
 			page_alloc::ref_release(physical_address, SECOND_LEVEL_ENTRIES);
 		}
+	}
+	
+	/*//free any second level tables that might have been allocated
+	for (uint32_t i = 0; i < MAX_SECOND_LEVEL_TABLES; i++){
+		if (second_level_table_addrs[i].physical_addr != 0x00000000){
+			page_alloc::ref_release(second_level_table_addrs[i].physical_addr);
+		}
+	}
+	
+	//free the second level table addresses page
+	//page_alloc::ref_release(second_level_table_addrs); //need physical address...*/
+	
+	uintptr_t page_base = (uintptr_t)first_level_table;
+	for (uint32_t i = 0; i < first_level_num_entries / (PAGE_SIZE / sizeof(uint32_t)); i++){
+		page_alloc::ref_release(page_base + i * 0x1000); //decrement the reference counts on the four pages
 	}
 }
 

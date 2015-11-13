@@ -7,7 +7,7 @@
 #include "pagetable.h"
 #include "runtime_tests.h"
 
-//#define RUN_TESTS
+#define RUN_TESTS
 
 extern uint32_t _binary_kernel_stripped_elf_start;
   

@@ -92,6 +92,11 @@ namespace page_alloc {
 				//use this section
 				for (uint32_t i = 0; i < size; i++) {
 					refcount_table[entry+i] = 1;
+#ifdef VERBOSE					
+					uart_puts("page_alloc: Acquire ");
+					uart_puthex((entry+i)*PAGE_SIZE);
+					uart_putline();
+#endif VERBOSE
 				}
 				retval = entry * PAGE_SIZE;
 				allocated_pages += size;
@@ -130,6 +135,12 @@ namespace page_alloc {
 		} else {
 			retval = ++refcount_table[page_ix];
 		}
+		
+#ifdef VERBOSE					
+		uart_puts("page_alloc: Acquire ");
+		uart_puthex(page);
+		uart_putline();
+#endif
 
 		//exit critical section
 		//spinlock_flag.clear(std::memory_order_release);
@@ -156,6 +167,12 @@ namespace page_alloc {
 		if (retval == 0) {
 			allocated_pages--;
 		}
+
+#ifdef VERBOSE					
+		uart_puts("page_alloc: Release ");
+		uart_puthex(page);
+		uart_putline();
+#endif
 
 		//exit critical section
 		//spinlock_flag.clear(std::memory_order_release);
