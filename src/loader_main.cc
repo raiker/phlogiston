@@ -1,4 +1,6 @@
 #include "common.h"
+#include <utility>
+
 #include "uart.h"
 #include "atags.h"
 #include "page_alloc.h"
@@ -10,8 +12,10 @@
 //#define RUN_TESTS
 
 extern uint32_t _binary_kernel_stripped_elf_start;
+
+typedef void KernelEntryProc(PageTable*, PageTable*);
   
-extern "C" /* Use C linkage for kernel_main. */
+extern "C"
 void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 {
 	uart_init();
@@ -93,7 +97,9 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	PageTable supervisor_table(true);
 	
-	if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table)){
+	void *entry_address;
+	
+	if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table, &entry_address)){
 		uart_puts("Failed to load kernel\r\n");
 		panic(PanicCodes::AssertionFailure);
 	}
@@ -136,8 +142,14 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	PagingManager::SetPagingMode(true, true);
 	PagingManager::EnablePaging();
 	
-	uart_puthex(*((uint32_t*)0x80000000));
+	uart_puthex((uint32_t)entry_address);
 	uart_putline();
+	
+	KernelEntryProc *entry_proc = (KernelEntryProc *)entry_address;
+	
+	entry_proc(&identity_overlay, &supervisor_table);
+	
+	panic(PanicCodes::AssertionFailure);
 #endif
 	while ( true )
 		uart_putc(uart_getc());

@@ -110,7 +110,7 @@ void elf_parse_header(void * elf_header){
 	}
 }
 
-bool load_elf(void * elf_header, PageTable & pagetable) {
+bool load_elf(void * elf_header, PageTable & pagetable, void ** entry_address) {
 	Elf32_Ehdr *header = (Elf32_Ehdr*)elf_header;
 	
 	if (sizeof(Elf32_Shdr) != header->e_shentsize){
@@ -149,6 +149,8 @@ bool load_elf(void * elf_header, PageTable & pagetable) {
 			}
 		}
 	}
+	
+	*entry_address = (void*)header->e_entry;
 	
 	return true;
 }

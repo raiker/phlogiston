@@ -590,6 +590,9 @@ Result<uintptr_t> PageTable::reserve_supersections(uintptr_t base, uint32_t num_
 }
 
 Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_address) {
+	//apparently this can be done in hardware
+	//http://blogs.bu.edu/md/2011/12/06/tagged-tlbs-and-context-switching/
+	
 	//see if the address is mapped
 	uint32_t first_level_index = virtual_address >> 20;
 	
@@ -1015,6 +1018,9 @@ void PagingManager::EnablePaging(){
 	
 	//invalidate icache
 	asm volatile ("mcr p15, 0, %[dummy], c7, c5, 0" : : [dummy] "r" (0));
+	
+	//invalidate tlb
+	asm volatile ("mcr p15, 0, %[dummy], c8, c7, 0" : : [dummy] "r" (0));
 	
 	//enable mmu ARMv6 mode and paging
 	status = status | 0x00800001;
