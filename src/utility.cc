@@ -19,6 +19,24 @@ extern "C" void __cxa_pure_virtual(){
 	panic(PanicCodes::PureVirtualFunctionCall);
 }
 
+void memcpy(void * dest, void * src, size_t count){
+	if ((uintptr_t)count & 0x3 || (uintptr_t)dest & 0x3 || (uintptr_t)src & 0x3){
+		uint8_t *a = (uint8_t*)dest;
+		uint8_t *b = (uint8_t*)src;
+		
+		for (size_t i = 0; i < count; i++){
+			*(a++) = *(b++);
+		}
+	} else {
+		uint32_t *a = (uint32_t*)dest;
+		uint32_t *b = (uint32_t*)src;
+		
+		for (size_t i = 0; i < count; i+=4){
+			*(a++) = *(b++);
+		}
+	}
+}
+
 /*void operator delete(void* ptr){
 	panic(PanicCodes::AssertionFailure);
 }

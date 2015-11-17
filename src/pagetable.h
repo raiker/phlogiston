@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "spinlock.h"
+#include "page_alloc.h"
 
 struct SecondLevelTableAddr {
 	uintptr_t physical_addr;
@@ -40,6 +41,8 @@ private:
 	uint32_t first_level_num_entries; //should be 4096 or 2048
 	bool reference_counted;
 	Spinlock spinlock_cs;
+	
+	PageAlloc &page_alloc;
 
 	Result<uintptr_t> virtual_to_physical_internal(uintptr_t virtual_address);
 	Result<uintptr_t> physical_to_virtual_internal(uintptr_t physical_address);
@@ -69,7 +72,7 @@ private:
 	Result<uint32_t*> get_page_descriptor(uintptr_t virtual_address);
 	Result<uint32_t*> get_section_descriptor(uintptr_t virtual_address, bool allow_second_level);
 public:
-	PageTable(bool is_supervisor, bool is_reference_counted = true);
+	PageTable(PageAlloc &_page_alloc, bool is_supervisor, bool is_reference_counted = true);
 	PageTable(const PageTable &other) = delete; //we don't want this to be copy-constructed
 	~PageTable();
 	

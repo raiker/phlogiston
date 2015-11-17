@@ -1,5 +1,4 @@
 #include "pagetable.h"
-#include "page_alloc.h"
 #include "panic.h"
 #include "uart.h"
 
@@ -23,8 +22,10 @@ static uint32_t get_allocation_pages(AllocationGranularity granularity){
 // 0 = page is not reserved
 // 1 = page is reserved
 
-PageTable::PageTable(bool is_supervisor, bool is_reference_counted) {
-	first_level_table = (uint32_t*)page_alloc::alloc(4); //4 pages for both modes
+PageTable::PageTable(PageAlloc &_page_alloc, bool is_supervisor, bool is_reference_counted) :
+	page_alloc(_page_alloc)
+{
+	first_level_table = (uint32_t*)page_alloc.alloc(4); //4 pages for both modes
 	
 	reference_counted = is_reference_counted;
 	
@@ -52,7 +53,7 @@ PageTable::PageTable(bool is_supervisor, bool is_reference_counted) {
 }
 
 uint32_t * PageTable::create_second_level_table() {
-	uint32_t * second_level_table = (uint32_t*)page_alloc::alloc(1); //4 times as much space as we need...
+	uint32_t * second_level_table = (uint32_t*)page_alloc.alloc(1); //4 times as much space as we need...
 	
 	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++) {
 		second_level_table[i] = 0x00000000;
@@ -78,13 +79,13 @@ PageTable::~PageTable() {
 					uintptr_t physical_address = second_level_entry & 0xfffff000;
 					
 					if (reference_counted){
-						page_alloc::ref_release(physical_address);
+						page_alloc.ref_release(physical_address);
 					}
 				}
 			}
 			
 			//free table - done even if the table isn't reference-counted
-			page_alloc::ref_release((uintptr_t)second_level_table);
+			page_alloc.ref_release((uintptr_t)second_level_table);
 		} else if ((first_level_entry & 0x3) == 0x2){
 			uintptr_t physical_address;
 			if (first_level_entry & 0x00040000) {
@@ -96,14 +97,14 @@ PageTable::~PageTable() {
 			}
 			
 			if (reference_counted){
-				page_alloc::ref_release(physical_address, SECOND_LEVEL_ENTRIES);
+				page_alloc.ref_release(physical_address, SECOND_LEVEL_ENTRIES);
 			}
 		}
 	}
 	
 	uintptr_t page_base = (uintptr_t)first_level_table;
 	for (uint32_t i = 0; i < 4; i++){
-		page_alloc::ref_release(page_base + i * 0x1000); //decrement the reference counts on the four pages
+		page_alloc.ref_release(page_base + i * 0x1000); //decrement the reference counts on the four pages
 	}
 }
 
@@ -157,7 +158,7 @@ bool PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGr
 	
 	for (uint32_t i = 0; i < units; i++){
 		//allocate a block
-		uintptr_t physical_address = page_alloc::alloc(get_allocation_pages(granularity));
+		uintptr_t physical_address = page_alloc.alloc(get_allocation_pages(granularity));
 		
 		uintptr_t map_address = virtual_address + i * get_allocation_pages(granularity) * PAGE_SIZE;
 		
@@ -183,7 +184,7 @@ bool PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGr
 		}
 		
 		if (!success) {
-			page_alloc::ref_release(physical_address, get_allocation_pages(granularity)); //free the allocated memory
+			page_alloc.ref_release(physical_address, get_allocation_pages(granularity)); //free the allocated memory
 			return false;
 		}
 	}
@@ -220,7 +221,7 @@ bool PageTable::map(uintptr_t virtual_address, uintptr_t physical_address, uint3
 	
 	if (reference_counted){
 		//bump reference counts
-		page_alloc::ref_acquire(physical_address, units * get_allocation_pages(granularity));
+		page_alloc.ref_acquire(physical_address, units * get_allocation_pages(granularity));
 	}
 	
 	return true;

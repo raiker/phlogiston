@@ -3,14 +3,14 @@
 #include "uart.h"
 #include "page_alloc.h"
 
-bool test_reservations() {
+bool test_reservations(PageAlloc &page_alloc) {
 	bool all_passed = true;
 	
-	page_alloc::MemStats stats_i = page_alloc::get_mem_stats();
+	MemStats stats_i = page_alloc.get_mem_stats();
 
 	{
 		uart_puts("begin constructor\r\n");
-		PageTable table(true);
+		PageTable table(page_alloc, true);
 	
 		uart_puts("end constructor\r\n");
 	
@@ -253,7 +253,7 @@ bool test_reservations() {
 		table.print_table_info();
 	}
 	
-	page_alloc::MemStats stats_f = page_alloc::get_mem_stats();
+	MemStats stats_f = page_alloc.get_mem_stats();
 	
 	if (stats_i.usedmem != stats_f.usedmem){
 		uart_puts("Leaked ");
@@ -265,11 +265,11 @@ bool test_reservations() {
 	return all_passed;
 }
 
-bool test_pagetables() {
+bool test_pagetables(PageAlloc &page_alloc) {
 	bool all_passed = true;
 	
 	//non-short circuit
-	all_passed &= test_reservations();
+	all_passed &= test_reservations(page_alloc);
 	
 	return all_passed;
 }

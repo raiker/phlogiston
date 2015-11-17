@@ -12,6 +12,7 @@
 //#define RUN_TESTS
 
 extern uint32_t _binary_kernel_stripped_elf_start;
+extern refcount_t __page_alloc_table_start;
 
 typedef void KernelEntryProc(PageTable*, PageTable*);
   
@@ -61,12 +62,12 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	//enable interrupts
 	asm volatile("cpsie aif");
 	
-	page_alloc::init(system_memory.size);
+	PageAlloc page_alloc(system_memory.size, &__page_alloc_table_start);
 	
-	uintptr_t fiq_stack = page_alloc::alloc(1) + PAGE_SIZE;
-	uintptr_t irq_stack = page_alloc::alloc(1) + PAGE_SIZE;
-	uintptr_t abort_stack = page_alloc::alloc(1) + PAGE_SIZE;
-	uintptr_t undef_stack = page_alloc::alloc(1) + PAGE_SIZE;
+	uintptr_t fiq_stack = page_alloc.alloc(1) + PAGE_SIZE;
+	uintptr_t irq_stack = page_alloc.alloc(1) + PAGE_SIZE;
+	uintptr_t abort_stack = page_alloc.alloc(1) + PAGE_SIZE;
+	uintptr_t undef_stack = page_alloc.alloc(1) + PAGE_SIZE;
 	
 	asm volatile(
 		"cpsid aif\n" //disable interrupts
@@ -88,16 +89,18 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 		);
 	
 #ifdef RUN_TESTS
-	if (test_pagetables()){
+	if (test_pagetables(page_alloc)){
 		uart_puts("All tests passed\r\n");
 	} else {
 		uart_puts("Some tests failed\r\n");
 	}
 #else
 	
-	PageTable supervisor_table(true);
+	PageTable supervisor_table(page_alloc, true);
 	
 	void *entry_address;
+	
+	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
 	
 	if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table, &entry_address)){
 		uart_puts("Failed to load kernel\r\n");
@@ -109,7 +112,7 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	uart_putline();
 	
 	//page table to handle identity-mapping the physical memory space
-	PageTable identity_overlay(false, false);
+	PageTable identity_overlay(page_alloc, false, false);
 	
 	//map all of ram
 	uint32_t nsections = get_num_allocation_units(system_memory.size, AllocationGranularity::Section);	
