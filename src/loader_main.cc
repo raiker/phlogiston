@@ -98,15 +98,6 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	PageTable supervisor_table(page_alloc, true);
 	
-	void *entry_address;
-	
-	elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
-	
-	if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table, &entry_address)){
-		uart_puts("Failed to load kernel\r\n");
-		panic(PanicCodes::AssertionFailure);
-	}
-		
 	//supervisor_table.print_table_info();
 
 	uart_putline();
@@ -145,10 +136,28 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	PagingManager::SetPagingMode(true, true);
 	PagingManager::EnablePaging();
 	
+	uart_puts("Paging enabled\r\n");
+	
+	void *entry_address;
+	
+	//elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
+	
+	if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table, &entry_address)){
+		uart_puts("Failed to load kernel\r\n");
+		panic(PanicCodes::AssertionFailure);
+	}
+	
 	uart_puthex((uint32_t)entry_address);
 	uart_putline();
 	
 	KernelEntryProc *entry_proc = (KernelEntryProc *)entry_address;
+	
+	//uart_hexdump(0x00028000, 0x40);
+	//uart_hexdump(0x80000000, 0x40);
+	
+	//supervisor_table.print_table_info();
+	
+	//panic(PanicCodes::AssertionFailure);
 	
 	entry_proc(&identity_overlay, &supervisor_table);
 	

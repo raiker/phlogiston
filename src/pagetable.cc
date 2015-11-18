@@ -2,6 +2,7 @@
 #include "panic.h"
 #include "uart.h"
 
+#include <atomic>
 #include <algorithm>
 
 static uint32_t get_allocation_pages(AllocationGranularity granularity){
@@ -594,6 +595,18 @@ Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_addr
 	//apparently this can be done in hardware
 	//http://blogs.bu.edu/md/2011/12/06/tagged-tlbs-and-context-switching/
 	
+	/*uint32_t pa;
+	asm volatile ("mcr p15, 0, %[va], c7, c8, 0" : : [va] "r" (virtual_address));
+	asm volatile ("mrc p15, 0, %[pa], c7, c4, 0" : [pa] "=r" (pa));
+	
+	if (pa & 0x00000001){
+		//abort
+		return Result<uintptr_t>::failure();
+	} else {
+		//success
+		return Result<uintptr_t>::success(pa & 0xfffffc00);
+	}*/
+	
 	//see if the address is mapped
 	uint32_t first_level_index = virtual_address >> 20;
 	
@@ -1022,6 +1035,9 @@ void PagingManager::EnablePaging(){
 	
 	//invalidate tlb
 	asm volatile ("mcr p15, 0, %[dummy], c8, c7, 0" : : [dummy] "r" (0));
+	
+	//memory barrier
+	std::atomic_thread_fence(std::memory_order_seq_cst);
 	
 	//enable mmu ARMv6 mode and paging
 	status = status | 0x00800001;

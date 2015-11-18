@@ -2,6 +2,7 @@ ASMFLAGS="-mcpu=arm1176jzf-s -fpic -ffreestanding"
 CXXFLAGS="-fno-exceptions -fno-unwind-tables -fno-rtti -g -std=c++17 -Wall -Wextra" #-O3
 
 rm build/*.o
+rm phlogiston.bin
 
 arm-none-eabi-g++ $ASMFLAGS -c boot.S -o build/boot.o
 arm-none-eabi-g++ $ASMFLAGS -c interrupts.S -o build/interrupts.o

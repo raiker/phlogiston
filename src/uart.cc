@@ -101,16 +101,20 @@ void uart_puts(const char* str){
 	uart_write((const unsigned char*) str, strlen(str));
 }
 
+void uart_put_hexnibble(uint8_t cx){
+	if (cx < 10){
+		uart_putc('0' + cx);
+	} else {
+		uart_putc('a' + cx - 10);
+	}
+}
+
 void uart_puthex(uint32_t x){
 	uart_putc('0');
 	uart_putc('x');
 	for (int i = 0; i < 8; i++){
 		uint8_t cx = (x >> ((7 - i) << 2)) & 0xf;
-		if (cx < 10){
-			uart_putc('0' + cx);
-		} else {
-			uart_putc('a' + cx - 10);
-		}
+		uart_put_hexnibble(cx);
 	}
 }
 
@@ -135,5 +139,28 @@ void uart_putdec(uint32_t x){
 void uart_putline(){
 	uart_putc('\r');
 	uart_putc('\n');
+}
+
+void uart_hexdump(uintptr_t start, size_t length){
+	uint32_t end = start + length;
+	while (true){
+		uart_puthex(start);
+		
+		for (uint32_t i = 0; i < 16; i++){
+			uart_putc(' ');
+			
+			uint32_t byte = *((uint8_t*)start);
+			uart_put_hexnibble(byte >> 4);
+			uart_put_hexnibble(byte & 0xf);
+			
+			start++;
+			if (start >= end){
+				uart_putline();
+				return;
+			}
+		}
+		
+		uart_putline();
+	}
 }
 

@@ -12,3 +12,5 @@ void uart_puts(const char* str);
 void uart_puthex(uint32_t x);
 void uart_putdec(uint32_t x);
 void uart_putline();
+
+void uart_hexdump(uintptr_t start, size_t length);

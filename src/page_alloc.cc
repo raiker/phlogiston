@@ -1,5 +1,6 @@
 #include "page_alloc.h"
 
+#include "utility.h"
 #include "panic.h"
 #include "uart.h"
 
@@ -102,6 +103,9 @@ uintptr_t PageAlloc::alloc(uint32_t size) {
 	
 	//exit critical section
 	//spinlock_flag.clear(std::memory_order_release);
+	
+	//clear page to 0xcc for security/debugging
+	memset(retval, 0xcc, PAGE_SIZE);
 	
 	return retval;
 }

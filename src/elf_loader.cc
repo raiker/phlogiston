@@ -2,7 +2,7 @@
 #include "uart.h"
 #include "elf.h"
 #include "panic.h"
-#include <cstring>
+#include "utility.h"
 
 void elf_parse_header(void * elf_header){
 	Elf32_Ehdr *header = (Elf32_Ehdr*)elf_header;
@@ -103,10 +103,18 @@ bool load_elf(void * elf_header, PageTable & pagetable, void ** entry_address) {
 			if (sec_header.sh_flags & SHF_ALLOC){
 				//TODO: fix gaping DoS attack surface
 				uintptr_t source_addr = (uintptr_t)elf_header + sec_header.sh_offset;
+				//Result<uintptr_t> dest_addr = pagetable.virtual_to_physical(sec_header.sh_addr);
 				uintptr_t dest_addr = sec_header.sh_addr;
 				size_t size = sec_header.sh_size;
 				
-				memcpy((void*)dest_addr, (void*)source_addr, size);
+				/*uart_puts("Copy ");
+				uart_puthex(size);
+				uart_puts(" bytes from ");
+				uart_puthex(source_addr);
+				uart_puts(" to ");
+				uart_puthex(dest_addr);
+				uart_putline();*/
+				memcpy(dest_addr, source_addr, size);
 			}
 		}
 	}
