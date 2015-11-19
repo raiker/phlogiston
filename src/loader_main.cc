@@ -14,7 +14,7 @@
 extern uint32_t _binary_kernel_stripped_elf_start;
 extern refcount_t __page_alloc_table_start;
 
-typedef void KernelEntryProc(PageTable*, PageTable*);
+typedef void KernelEntryProc(PageTable*, PageTable*, PageAlloc*);
   
 extern "C"
 void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
@@ -159,7 +159,7 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	//panic(PanicCodes::AssertionFailure);
 	
-	entry_proc(&identity_overlay, &supervisor_table);
+	entry_proc(&identity_overlay, &supervisor_table, &page_alloc);
 	
 	panic(PanicCodes::AssertionFailure);
 #endif

@@ -18,8 +18,9 @@ arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c kernel_entry.cc -o build/kernel_entry.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c spinlock.cc -o build/spinlock.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c pagetable.cc -o build/pagetable.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c pagetable_tests.cc -o build/pagetable_tests.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c process.cc -o build/process.o
 
-arm-none-eabi-g++ -g -T phlogiston_link.ld -o kernel.elf -flto -fpic -ffreestanding -O2 build/utility.o build/mmio.o build/uart.o build/panic.o build/pagetable.o build/spinlock.o build/page_alloc.o build/kernel_entry.o -nostdlib -lgcc
+arm-none-eabi-g++ -g -T phlogiston_link.ld -o kernel.elf -flto -fpic -ffreestanding -O2 build/utility.o build/mmio.o build/uart.o build/panic.o build/pagetable.o build/spinlock.o build/page_alloc.o build/process.o build/kernel_entry.o -nostdlib -lgcc
 
 arm-none-eabi-objcopy --only-keep-debug kernel.elf kernel.sym
 arm-none-eabi-objcopy -S kernel.elf kernel-stripped.elf
