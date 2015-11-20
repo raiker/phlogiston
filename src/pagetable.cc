@@ -1046,10 +1046,49 @@ bool PageTable::commit_supersection(uintptr_t virtual_address, uintptr_t physica
 	return false;
 }
 
+//virtual_address is page-aligned
 ErrorResult<PageTableErrors> PageTable::decommit_pages(uintptr_t virtual_address, uint32_t num_pages) {
+	MultiBlockState page_state = get_page_state(virtual_address, num_pages, false);
 	
+	if (!page_state.is_committed){
+		return ErrorResult::failure(PageTableErrors::SomeBlocksNotCommitted);
+	}
+	
+	for (uint32_t i = 0; i < num_pages; i++){
+		auto result = get_page_descriptor(virtual_address + i * PAGE_SIZE);
+		
+		if (!result.is_success){
+			panic(PanicCodes::AssertionFailure);
+		}
+		
+		uintptr_t physical_address = *result.value & 0xfffff000;
+		page_alloc.ref_release(physical_address);
+		*result.value = 0x00000004;
+	}
+	return ErrorResult::success();
 }
-ErrorResult<PageTableErrors> PageTable::decommit_sections(uintptr_t virtual_address, uint32_t num_pages);
+
+//virtual_address is section_aligned
+ErrorResult<PageTableErrors> PageTable::decommit_sections(uintptr_t virtual_address, uint32_t num_pages){
+	MultiBlockState section_state = get_section_state(virtual_address, num_sections, false);
+	
+	if (!section_state.is_committed){
+		return ErrorResult::failure(PageTableErrors::SomeBlocksNotCommitted);
+	}
+	
+	for (uint32_t i = 0; i < num_sections; i++){
+		auto result = get_section_descriptor(virtual_address + i * SECTION_SIZE);
+		
+		if (!result.is_success){
+			panic(PanicCodes::AssertionFailure);
+		}
+		
+		uintptr_t physical_address = *result.value & 0xfff00000;
+		page_alloc.ref_release(physical_address, SECTION_SIZE / PAGE_SIZE);
+		*result.value = 0x00000004;
+	}
+	return ErrorResult::success();
+}
 
 ErrorResult<PageTableErrors> PageTable::release_pages(uintptr_t virtual_address, uint32_t num_pages);
 ErrorResult<PageTableErrors> PageTable::release_sections(uintptr_t virtual_address, uint32_t num_pages);
