@@ -81,11 +81,15 @@ public:
 	
 	Result<uintptr_t> reserve_allocate(uint32_t units, AllocationGranularity granularity);
 	Result<uintptr_t> reserve_allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
-
+	
 	bool allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
 	
 	bool map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity);
 	
+	bool deallocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
+	
+	bool release(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
+
 	Result<UnitState> get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity);
 	
 	Result<uintptr_t> virtual_to_physical(uintptr_t virtual_address);

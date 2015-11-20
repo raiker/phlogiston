@@ -23,6 +23,10 @@ static uint32_t get_allocation_pages(AllocationGranularity granularity){
 // 0 = page is not reserved
 // 1 = page is reserved
 
+//********************
+//***PUBLIC METHODS***
+//********************
+
 PageTable::PageTable(PageAlloc &_page_alloc, bool is_supervisor, bool is_reference_counted) :
 	page_alloc(_page_alloc)
 {
@@ -51,16 +55,6 @@ PageTable::PageTable(PageAlloc &_page_alloc, bool is_supervisor, bool is_referen
 			*descriptor.value |= 0x1; //NX bit
 		}
 	}*/
-}
-
-uint32_t * PageTable::create_second_level_table() {
-	uint32_t * second_level_table = (uint32_t*)page_alloc.alloc(1); //4 times as much space as we need...
-	
-	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++) {
-		second_level_table[i] = 0x00000000;
-	}
-	
-	return second_level_table;
 }
 
 PageTable::~PageTable() {
@@ -137,6 +131,30 @@ Result<uintptr_t> PageTable::reserve(uintptr_t address, uint32_t units, Allocati
 		default:
 			panic(PanicCodes::IncompatibleParameter);
 	}
+}
+
+Result<uintptr_t> PageTable::reserve_allocate(uint32_t units, AllocationGranularity granularity){
+	//doesn't acquire lock; convenience method
+	
+	Result<uintptr_t> reservation = reserve(units, granularity);
+	if (reservation.is_success){
+		if (!allocate(reservation.value, units, granularity)){
+			return Result<uintptr_t>::failure();
+		}
+	}
+	return reservation;
+}
+
+Result<uintptr_t> PageTable::reserve_allocate(uintptr_t address, uint32_t units, AllocationGranularity granularity){
+	//doesn't acquire lock; convenience method
+	
+	Result<uintptr_t> reservation = reserve(address, units, granularity);
+	if (reservation.is_success){
+		if (!allocate(reservation.value, units, granularity)){
+			return Result<uintptr_t>::failure();
+		}
+	}
+	return reservation;
 }
 
 //TODO: handle partial failure
@@ -228,126 +246,373 @@ bool PageTable::map(uintptr_t virtual_address, uintptr_t physical_address, uint3
 	return true;
 }
 
-Result<uintptr_t> PageTable::reserve_allocate(uint32_t units, AllocationGranularity granularity){
-	//doesn't acquire lock; convenience method
-	
-	Result<uintptr_t> reservation = reserve(units, granularity);
-	if (reservation.is_success){
-		if (!allocate(reservation.value, units, granularity)){
-			return Result<uintptr_t>::failure();
-		}
-	}
-	return reservation;
+bool PageTable::deallocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
+	auto lock = spinlock_cs.acquire();
 }
 
-Result<uintptr_t> PageTable::reserve_allocate(uintptr_t address, uint32_t units, AllocationGranularity granularity){
-	//doesn't acquire lock; convenience method
-	
-	Result<uintptr_t> reservation = reserve(address, units, granularity);
-	if (reservation.is_success){
-		if (!allocate(reservation.value, units, granularity)){
-			return Result<uintptr_t>::failure();
-		}
-	}
-	return reservation;
+bool PageTable::release(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
+	auto lock = spinlock_cs.acquire();
 }
 
-bool PageTable::commit_page(uintptr_t virtual_address, uintptr_t physical_address){
-	//TODO: Permission bits
-	virtual_address &= 0xfffff000;
-	physical_address &= 0xfffff000;
+Result<UnitState> PageTable::get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity) {
+	auto lock = spinlock_cs.acquire();
 	
-	auto result = get_page_descriptor(virtual_address);
-	
-	if (result.is_success){
-		//in order to be committed, the page needs to be reserved already
-		if ((*result.value & 0x7) == 0x4){
-			//reserved but not committed yet
-			*result.value = physical_address | 0x00000002;
-			return true;
-		}
+	switch (granularity){
+		case AllocationGranularity::Page:
+			{
+				Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address, false);
+				if (section_descriptor.is_success){
+					//it's mapped as a section
+					return Result<UnitState>::success(get_state_from_descriptor(*section_descriptor.value));
+				}
+				//it's mapped as a second-level table
+				Result<uint32_t*> page_descriptor = get_page_descriptor(virtual_address);
+				if (!page_descriptor.is_success){
+					return Result<UnitState>::failure();
+				}
+				
+				return Result<UnitState>::success(get_state_from_descriptor(*page_descriptor.value));
+			}
+		case AllocationGranularity::Section:
+			{
+				Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address, false);
+				if (section_descriptor.is_success){
+					//it's mapped as a section
+					return Result<UnitState>::success(get_state_from_descriptor(*section_descriptor.value));
+				} else {
+					return Result<UnitState>::failure();
+				}
+			}
+		case AllocationGranularity::Supersection:
+			{
+				virtual_address &= 0xff000000;
+				bool all_free = true;
+				bool all_reserved = true;
+				bool all_committed = true;
+				
+				for (uint32_t i = 0; i < 16; i++){
+					Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address + i * SECTION_SIZE, false);
+					if (section_descriptor.is_success){
+						//it's mapped as a supersection
+						if ((*section_descriptor.value & 0x7) == 0){
+							all_reserved = false;
+							all_committed = false;
+						} else if ((*section_descriptor.value & 0x7) == 4){
+							all_free = false;
+							all_committed = false;
+						} else {
+							all_free = false;
+							all_reserved = false;
+						}
+					} else {
+						return Result<UnitState>::failure();
+					}
+				}
+				
+				if (all_free){
+					return Result<UnitState>::success(UnitState::Free);
+				} else if (all_reserved){
+					return Result<UnitState>::success(UnitState::Reserved);
+				} else if (all_committed){
+					return Result<UnitState>::success(UnitState::Committed);
+				} else {
+					return Result<UnitState>::failure();
+				}
+			}
+		default:
+			return Result<UnitState>::failure();
 	}
-	return false;
 }
 
-bool PageTable::commit_section(uintptr_t virtual_address, uintptr_t physical_address){
-	//TODO: Permission bits
-	virtual_address &= 0xfff00000;
-	physical_address &= 0xfff00000;
+Result<uintptr_t> PageTable::virtual_to_physical(uintptr_t virtual_address) {
+	auto lock = spinlock_cs.acquire();
 	
-	auto result = get_section_descriptor(virtual_address, false);
-	
-	if (result.is_success){
-		//in order to be committed, the section needs to be reserved already
-		if ((*result.value & 0x7) == 0x4){
-			//reserved but not committed yet
-			*result.value = physical_address | 0x00000002;
-			return true;
-		}
-	}
-	return false;
+	return virtual_to_physical_internal(virtual_address);
 }
 
-bool PageTable::commit_supersection(uintptr_t virtual_address, uintptr_t physical_address){
-#ifdef VERBOSE
-	uart_puts("PageTable::commit_supersection(virtual_address=");
-	uart_puthex(virtual_address);
-	uart_puts(",physical_address=");
-	uart_puthex(physical_address);
-	uart_puts(")\r\n");
-#endif
+Result<uintptr_t> PageTable::physical_to_virtual(uintptr_t physical_address) {
+	auto lock = spinlock_cs.acquire();
 	
-	//TODO: Permission bits
-	virtual_address &= 0xff000000;
-	physical_address &= 0xff000000;
-	
-	auto result = get_section_descriptor(virtual_address, false);
-	
-	if (result.is_success){
-		//in order to be committed, the sections need to be reserved already
-		for (uint32_t i = 0; i < 16; i++){
-			if ((result.value[i] & 0x07) != 0x04) return false;
-		}
-		for (uint32_t i = 0; i < 16; i++){
-			result.value[i] = physical_address | 0x00040002;
-		}
-		return true;
-	}
-	return false;
+	return physical_to_virtual_internal(physical_address);
 }
 
-Result<uint32_t*> PageTable::get_page_descriptor(uintptr_t virtual_address) {
-	uint32_t first_level_index = virtual_address >> 20;
+void PageTable::print_table_info() {
+	auto lock = spinlock_cs.acquire();
 	
-	if (first_level_index >= first_level_num_entries) {
-		return Result<uint32_t*>::failure();
+	uintptr_t aggregation_start;
+	uint32_t aggregation_count = 0;
+	AggregationTypes aggregation_type;
+	
+	for (uint32_t i = 0; i < first_level_num_entries; i++){
+		uint32_t &first_level_entry = get_first_level_table_address()[i];
+		uintptr_t section_base = i * SECTION_SIZE;
+		
+		uint32_t mapping_type = first_level_entry & 0x3;
+		if (mapping_type == 0){
+			if (first_level_entry & 0x4){
+				//section is reserved
+				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Reserved){
+					section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+				}
+				
+				if (aggregation_count++ == 0){
+					aggregation_start = section_base;
+					aggregation_type = AggregationTypes::Reserved;
+				}
+			} else {
+				//unmapped
+				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Unmapped){
+					section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+				}
+				
+				if (aggregation_count++ == 0){
+					aggregation_start = section_base;
+					aggregation_type = AggregationTypes::Unmapped;
+				}
+			}
+		} else {
+			if (aggregation_count > 0){
+				section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+			}
+			
+			if (mapping_type == 1){
+				uintptr_t second_level_physical_address = first_level_entry & 0xfffffc00;
+				uart_puthex(section_base);
+				uart_puts("\tsecond-level page table (");
+				uart_puthex(second_level_physical_address);
+				uart_puts(")\r\n");
+				
+				print_second_level_table_info(get_second_level_table_address(second_level_physical_address), section_base);
+			} else if (mapping_type == 2){
+				uart_puthex(section_base);
+				
+				bool nx = first_level_entry & 0x10;
+				
+				uintptr_t address;
+				if (first_level_entry & (1<<18)){
+					//uart_puthex(first_level_entry);
+					//supersection
+					address = (first_level_entry & 0xff000000);
+					uart_puts("\tsupersection mapped to ");
+					
+					i += 15;
+				} else {
+					//regular section
+					address = (first_level_entry & 0xfff00000);
+					uart_puts("\tsection mapped to ");
+				}
+				
+				uart_puthex(address);
+				
+				if (nx){
+					uart_puts(" NX");
+				}
+				uart_puts("\r\n");
+			} else {
+				uart_puthex(section_base);
+				uart_puts("\tinvalid descriptor!\r\n");
+			}
+		}
 	}
 	
-	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
-	
-	if ((first_level_entry & 0x3) == 1) {
-		uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
-		uint32_t second_level_index = (virtual_address >> 12) & 0xff;
-	
-		return Result<uint32_t*>::success(&second_level_table[second_level_index]);
+	if (aggregation_count > 0){
+		section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
 	}
-	
-	return Result<uint32_t*>::failure();
 }
 
-Result<uint32_t*> PageTable::get_section_descriptor(uintptr_t virtual_address, bool allow_second_level) {
-	uint32_t first_level_index = virtual_address >> 20;
+//*********************
+//***PRIVATE METHODS***
+//*********************
+
+Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_address) {
+	//apparently this can be done in hardware
+	//http://blogs.bu.edu/md/2011/12/06/tagged-tlbs-and-context-switching/
 	
-	if (first_level_index >= first_level_num_entries) {
-		return Result<uint32_t*>::failure();
-	}
+	/*uint32_t pa;
+	asm volatile ("mcr p15, 0, %[va], c7, c8, 0" : : [va] "r" (virtual_address));
+	asm volatile ("mrc p15, 0, %[pa], c7, c4, 0" : [pa] "=r" (pa));
 	
-	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
-	
-	if ((first_level_entry & 0x3) == 1 && !allow_second_level) {
-		return Result<uint32_t*>::failure();
+	if (pa & 0x00000001){
+		//abort
+		return Result<uintptr_t>::failure();
 	} else {
-		return Result<uint32_t*>::success(&first_level_entry);
+		//success
+		return Result<uintptr_t>::success(pa & 0xfffffc00);
+	}*/
+	
+	//see if the address is mapped
+	uint32_t first_level_index = virtual_address >> 20;
+	
+	if (first_level_index >= first_level_num_entries) {
+		return Result<uintptr_t>::failure();
+	}
+	
+	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
+	
+	switch (first_level_entry & 0x3) {
+		case 1:
+			//second-level table
+			{
+				uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
+				uint32_t second_level_index = (virtual_address >> 12) & 0xff;
+				
+				uint32_t & second_level_entry = second_level_table[second_level_index];
+				
+				if (second_level_entry & 0x2) {
+					//page is committed
+					uintptr_t address = (second_level_entry & 0xfffff000) | (virtual_address & 0x00000fff);
+					return Result<uintptr_t>::success(address);
+				} else {
+					//page is unallocated or reserved (we don't use large pages)
+					return Result<uintptr_t>::failure();
+				}
+			}
+			break;
+		case 2:
+			//section or supersection
+			if (first_level_entry & (1<<18)){
+				//supersection
+				uintptr_t address = (first_level_entry & 0xff000000) | (virtual_address & 0x00ffffff);
+				return Result<uintptr_t>::success(address);
+			} else {
+				//regular section
+				uintptr_t address = (first_level_entry & 0xfff00000) | (virtual_address & 0x000fffff);
+				return Result<uintptr_t>::success(address);
+			}
+			break;
+		default:
+			//memory is not currently committed
+			return Result<uintptr_t>::failure();
+	}
+}
+
+Result<uintptr_t> PageTable::physical_to_virtual_internal(uintptr_t physical_address) {
+	//very slow, avoid if possible
+	//requires iterating through all the first- and second-level page table entries
+	//returns only the first virtual mapping that matches the target
+	uint32_t * first_level_table = get_first_level_table_address();
+	
+	for (uint32_t i = 0; i < first_level_num_entries; i++){
+		uint32_t & first_level_entry = first_level_table[i];
+		
+		switch (first_level_entry & 0x3) {
+			case 1:
+				//second-level table
+				{
+					uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
+					
+					for (uint32_t j = 0; j < SECOND_LEVEL_ENTRIES; j++) {
+						uint32_t & second_level_entry = second_level_table[j];
+						
+						if (second_level_entry & 0x2) {
+							//page is committed
+							if ((second_level_entry & 0xfffff000) == (physical_address & 0xfffff000)){
+								//match
+								uintptr_t address = (first_level_entry & 0xfffff000) | (physical_address & 0x00000fff);
+								return Result<uintptr_t>::success(address);
+							}
+						}
+					}
+				}
+				break;
+			case 2:
+				//section or supersection
+				if (first_level_entry & (1<<18)){
+					//supersection
+					if ((first_level_entry & 0xff000000) == (physical_address & 0xff000000)){
+						//match
+						uintptr_t address = (first_level_entry & 0xff000000) | (physical_address & 0x00ffffff);
+						return Result<uintptr_t>::success(address);
+					}
+				} else {
+					//regular section
+					if ((first_level_entry & 0xfff00000) == (physical_address & 0xfff00000)){
+						//match
+						uintptr_t address = (first_level_entry & 0xfff00000) | (physical_address & 0x000fffff);
+						return Result<uintptr_t>::success(address);
+					}
+				}
+				break;
+			default:
+				//memory is not currently committed
+				;
+		}
+	}
+	
+	return Result<uintptr_t>::failure();
+}
+
+uint32_t * PageTable::create_second_level_table() {
+	uint32_t * second_level_table = (uint32_t*)page_alloc.alloc(1); //4 times as much space as we need...
+	
+	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++) {
+		second_level_table[i] = 0x00000000;
+	}
+	
+	return second_level_table;
+}
+
+uint32_t * PageTable::get_first_level_table_address() {
+	return first_level_table;
+}
+
+uint32_t * PageTable::get_second_level_table_address(uintptr_t physical_base_address){
+	return (uint32_t*)physical_base_address;
+}
+
+void PageTable::print_second_level_table_info(uint32_t * table, uintptr_t base) {
+	uintptr_t aggregation_start;
+	uint32_t aggregation_count = 0;
+	AggregationTypes aggregation_type;
+	
+	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++){
+		uint32_t &second_level_entry = table[i];
+		uintptr_t page_base = base + i * PAGE_SIZE;
+		
+		if (!(second_level_entry & 0x2)){
+			if (second_level_entry & 0x4){
+				//section is reserved
+				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Reserved){
+					page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+				}
+				
+				if (aggregation_count++ == 0){
+					aggregation_start = page_base;
+					aggregation_type = AggregationTypes::Reserved;
+				}
+			} else {
+				//unmapped
+				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Unmapped){
+					page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+				}
+				
+				if (aggregation_count++ == 0){
+					aggregation_start = page_base;
+					aggregation_type = AggregationTypes::Unmapped;
+				}
+			}
+		} else {
+			if (aggregation_count > 0){
+				page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
+			}
+			
+			uintptr_t address = (second_level_entry & 0xfffff000);
+			
+			bool nx = second_level_entry & 0x1;
+			
+			uart_puts("\t");
+			uart_puthex(page_base);
+			uart_puts("\tpage mapped to ");
+			uart_puthex(address);
+			if (nx){
+				uart_puts(" NX");
+			}
+			uart_puts("\r\n");
+		}
+	}
+	
+	if (aggregation_count > 0){
+		page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
 	}
 }
 
@@ -509,6 +774,42 @@ Result<uintptr_t> PageTable::reserve_pages(uintptr_t base, uint32_t num_pages) {
 	return Result<uintptr_t>::success(base);
 }
 
+Result<uintptr_t> PageTable::reserve_sections(uintptr_t base, uint32_t num_sections) {
+	base &= 0xfff00000;
+	
+	for (uint32_t i = 0; i < num_sections; i++){
+		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
+		if (!result.is_success || *result.value & 0x7){
+			return Result<uintptr_t>::failure();
+		}
+	}
+	
+	for (uint32_t i = 0; i < num_sections; i++){
+		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
+		*result.value = 0x00000004;
+	}
+	
+	return Result<uintptr_t>::success(base);
+}
+
+Result<uintptr_t> PageTable::reserve_supersections(uintptr_t base, uint32_t num_supersections) {
+	base &= 0xff000000;
+	
+	for (uint32_t i = 0; i < num_supersections * 16; i++){
+		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
+		if (!result.is_success || *result.value & 0x7){
+			return Result<uintptr_t>::failure();
+		}
+	}
+	
+	for (uint32_t i = 0; i < num_supersections * 16; i++){
+		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
+		*result.value = 0x00000004;
+	}
+	
+	return Result<uintptr_t>::success(base);
+}
+
 //checks whether num_pages pages can be reserved in the section enclosing base, starting from base
 bool PageTable::check_section_partially_reservable(uintptr_t base, uint32_t num_pages) {
 	auto result = get_section_descriptor(base, true);
@@ -555,166 +856,103 @@ void PageTable::reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
 	}
 }
 
-Result<uintptr_t> PageTable::reserve_sections(uintptr_t base, uint32_t num_sections) {
-	base &= 0xfff00000;
+bool PageTable::commit_page(uintptr_t virtual_address, uintptr_t physical_address){
+	//TODO: Permission bits
+	virtual_address &= 0xfffff000;
+	physical_address &= 0xfffff000;
 	
-	for (uint32_t i = 0; i < num_sections; i++){
-		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
-		if (!result.is_success || *result.value & 0x7){
-			return Result<uintptr_t>::failure();
+	auto result = get_page_descriptor(virtual_address);
+	
+	if (result.is_success){
+		//in order to be committed, the page needs to be reserved already
+		if ((*result.value & 0x7) == 0x4){
+			//reserved but not committed yet
+			*result.value = physical_address | 0x00000002;
+			return true;
 		}
 	}
-	
-	for (uint32_t i = 0; i < num_sections; i++){
-		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
-		*result.value = 0x00000004;
-	}
-	
-	return Result<uintptr_t>::success(base);
+	return false;
 }
 
-Result<uintptr_t> PageTable::reserve_supersections(uintptr_t base, uint32_t num_supersections) {
-	base &= 0xff000000;
+bool PageTable::commit_section(uintptr_t virtual_address, uintptr_t physical_address){
+	//TODO: Permission bits
+	virtual_address &= 0xfff00000;
+	physical_address &= 0xfff00000;
 	
-	for (uint32_t i = 0; i < num_supersections * 16; i++){
-		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
-		if (!result.is_success || *result.value & 0x7){
-			return Result<uintptr_t>::failure();
+	auto result = get_section_descriptor(virtual_address, false);
+	
+	if (result.is_success){
+		//in order to be committed, the section needs to be reserved already
+		if ((*result.value & 0x7) == 0x4){
+			//reserved but not committed yet
+			*result.value = physical_address | 0x00000002;
+			return true;
 		}
 	}
-	
-	for (uint32_t i = 0; i < num_supersections * 16; i++){
-		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
-		*result.value = 0x00000004;
-	}
-	
-	return Result<uintptr_t>::success(base);
+	return false;
 }
 
-Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_address) {
-	//apparently this can be done in hardware
-	//http://blogs.bu.edu/md/2011/12/06/tagged-tlbs-and-context-switching/
+bool PageTable::commit_supersection(uintptr_t virtual_address, uintptr_t physical_address){
+#ifdef VERBOSE
+	uart_puts("PageTable::commit_supersection(virtual_address=");
+	uart_puthex(virtual_address);
+	uart_puts(",physical_address=");
+	uart_puthex(physical_address);
+	uart_puts(")\r\n");
+#endif
 	
-	/*uint32_t pa;
-	asm volatile ("mcr p15, 0, %[va], c7, c8, 0" : : [va] "r" (virtual_address));
-	asm volatile ("mrc p15, 0, %[pa], c7, c4, 0" : [pa] "=r" (pa));
+	//TODO: Permission bits
+	virtual_address &= 0xff000000;
+	physical_address &= 0xff000000;
 	
-	if (pa & 0x00000001){
-		//abort
-		return Result<uintptr_t>::failure();
-	} else {
-		//success
-		return Result<uintptr_t>::success(pa & 0xfffffc00);
-	}*/
+	auto result = get_section_descriptor(virtual_address, false);
 	
-	//see if the address is mapped
+	if (result.is_success){
+		//in order to be committed, the sections need to be reserved already
+		for (uint32_t i = 0; i < 16; i++){
+			if ((result.value[i] & 0x07) != 0x04) return false;
+		}
+		for (uint32_t i = 0; i < 16; i++){
+			result.value[i] = physical_address | 0x00040002;
+		}
+		return true;
+	}
+	return false;
+}
+
+Result<uint32_t*> PageTable::get_page_descriptor(uintptr_t virtual_address) {
 	uint32_t first_level_index = virtual_address >> 20;
 	
 	if (first_level_index >= first_level_num_entries) {
-		return Result<uintptr_t>::failure();
+		return Result<uint32_t*>::failure();
 	}
 	
 	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
 	
-	switch (first_level_entry & 0x3) {
-		case 1:
-			//second-level table
-			{
-				uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
-				uint32_t second_level_index = (virtual_address >> 12) & 0xff;
-				
-				uint32_t & second_level_entry = second_level_table[second_level_index];
-				
-				if (second_level_entry & 0x2) {
-					//page is committed
-					uintptr_t address = (second_level_entry & 0xfffff000) | (virtual_address & 0x00000fff);
-					return Result<uintptr_t>::success(address);
-				} else {
-					//page is unallocated or reserved (we don't use large pages)
-					return Result<uintptr_t>::failure();
-				}
-			}
-			break;
-		case 2:
-			//section or supersection
-			if (first_level_entry & (1<<18)){
-				//supersection
-				uintptr_t address = (first_level_entry & 0xff000000) | (virtual_address & 0x00ffffff);
-				return Result<uintptr_t>::success(address);
-			} else {
-				//regular section
-				uintptr_t address = (first_level_entry & 0xfff00000) | (virtual_address & 0x000fffff);
-				return Result<uintptr_t>::success(address);
-			}
-			break;
-		default:
-			//memory is not currently committed
-			return Result<uintptr_t>::failure();
-	}
-}
-
-Result<uintptr_t> PageTable::physical_to_virtual_internal(uintptr_t physical_address) {
-	//very slow, avoid if possible
-	//requires iterating through all the first- and second-level page table entries
-	//returns only the first virtual mapping that matches the target
-	uint32_t * first_level_table = get_first_level_table_address();
+	if ((first_level_entry & 0x3) == 1) {
+		uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
+		uint32_t second_level_index = (virtual_address >> 12) & 0xff;
 	
-	for (uint32_t i = 0; i < first_level_num_entries; i++){
-		uint32_t & first_level_entry = first_level_table[i];
-		
-		switch (first_level_entry & 0x3) {
-			case 1:
-				//second-level table
-				{
-					uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
-					
-					for (uint32_t j = 0; j < SECOND_LEVEL_ENTRIES; j++) {
-						uint32_t & second_level_entry = second_level_table[j];
-						
-						if (second_level_entry & 0x2) {
-							//page is committed
-							if ((second_level_entry & 0xfffff000) == (physical_address & 0xfffff000)){
-								//match
-								uintptr_t address = (first_level_entry & 0xfffff000) | (physical_address & 0x00000fff);
-								return Result<uintptr_t>::success(address);
-							}
-						}
-					}
-				}
-				break;
-			case 2:
-				//section or supersection
-				if (first_level_entry & (1<<18)){
-					//supersection
-					if ((first_level_entry & 0xff000000) == (physical_address & 0xff000000)){
-						//match
-						uintptr_t address = (first_level_entry & 0xff000000) | (physical_address & 0x00ffffff);
-						return Result<uintptr_t>::success(address);
-					}
-				} else {
-					//regular section
-					if ((first_level_entry & 0xfff00000) == (physical_address & 0xfff00000)){
-						//match
-						uintptr_t address = (first_level_entry & 0xfff00000) | (physical_address & 0x000fffff);
-						return Result<uintptr_t>::success(address);
-					}
-				}
-				break;
-			default:
-				//memory is not currently committed
-				;
-		}
+		return Result<uint32_t*>::success(&second_level_table[second_level_index]);
 	}
 	
-	return Result<uintptr_t>::failure();
+	return Result<uint32_t*>::failure();
 }
 
-uint32_t * PageTable::get_first_level_table_address() {
-	return first_level_table;
-}
-
-uint32_t * PageTable::get_second_level_table_address(uintptr_t physical_base_address){
-	return (uint32_t*)physical_base_address;
+Result<uint32_t*> PageTable::get_section_descriptor(uintptr_t virtual_address, bool allow_second_level) {
+	uint32_t first_level_index = virtual_address >> 20;
+	
+	if (first_level_index >= first_level_num_entries) {
+		return Result<uint32_t*>::failure();
+	}
+	
+	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
+	
+	if ((first_level_entry & 0x3) == 1 && !allow_second_level) {
+		return Result<uint32_t*>::failure();
+	} else {
+		return Result<uint32_t*>::success(&first_level_entry);
+	}
 }
 
 UnitState get_state_from_descriptor(uint32_t descriptor){
@@ -725,88 +963,6 @@ UnitState get_state_from_descriptor(uint32_t descriptor){
 	} else {
 		return UnitState::Committed;
 	}
-}
-
-Result<UnitState> PageTable::get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity) {
-	auto lock = spinlock_cs.acquire();
-	
-	switch (granularity){
-		case AllocationGranularity::Page:
-			{
-				Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address, false);
-				if (section_descriptor.is_success){
-					//it's mapped as a section
-					return Result<UnitState>::success(get_state_from_descriptor(*section_descriptor.value));
-				}
-				//it's mapped as a second-level table
-				Result<uint32_t*> page_descriptor = get_page_descriptor(virtual_address);
-				if (!page_descriptor.is_success){
-					return Result<UnitState>::failure();
-				}
-				
-				return Result<UnitState>::success(get_state_from_descriptor(*page_descriptor.value));
-			}
-		case AllocationGranularity::Section:
-			{
-				Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address, false);
-				if (section_descriptor.is_success){
-					//it's mapped as a section
-					return Result<UnitState>::success(get_state_from_descriptor(*section_descriptor.value));
-				} else {
-					return Result<UnitState>::failure();
-				}
-			}
-		case AllocationGranularity::Supersection:
-			{
-				virtual_address &= 0xff000000;
-				bool all_free = true;
-				bool all_reserved = true;
-				bool all_committed = true;
-				
-				for (uint32_t i = 0; i < 16; i++){
-					Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address + i * SECTION_SIZE, false);
-					if (section_descriptor.is_success){
-						//it's mapped as a supersection
-						if ((*section_descriptor.value & 0x7) == 0){
-							all_reserved = false;
-							all_committed = false;
-						} else if ((*section_descriptor.value & 0x7) == 4){
-							all_free = false;
-							all_committed = false;
-						} else {
-							all_free = false;
-							all_reserved = false;
-						}
-					} else {
-						return Result<UnitState>::failure();
-					}
-				}
-				
-				if (all_free){
-					return Result<UnitState>::success(UnitState::Free);
-				} else if (all_reserved){
-					return Result<UnitState>::success(UnitState::Reserved);
-				} else if (all_committed){
-					return Result<UnitState>::success(UnitState::Committed);
-				} else {
-					return Result<UnitState>::failure();
-				}
-			}
-		default:
-			return Result<UnitState>::failure();
-	}
-}
-
-Result<uintptr_t> PageTable::virtual_to_physical(uintptr_t virtual_address) {
-	auto lock = spinlock_cs.acquire();
-	
-	return virtual_to_physical_internal(virtual_address);
-}
-
-Result<uintptr_t> PageTable::physical_to_virtual(uintptr_t physical_address) {
-	auto lock = spinlock_cs.acquire();
-	
-	return physical_to_virtual_internal(physical_address);
 }
 
 enum class AggregationTypes {
@@ -845,146 +1001,6 @@ void page_aggregation_display(
 		uart_puts(" reserved pages\r\n");
 	}
 	aggregation_count = 0;
-}
-
-void PageTable::print_table_info() {
-	auto lock = spinlock_cs.acquire();
-	
-	uintptr_t aggregation_start;
-	uint32_t aggregation_count = 0;
-	AggregationTypes aggregation_type;
-	
-	for (uint32_t i = 0; i < first_level_num_entries; i++){
-		uint32_t &first_level_entry = get_first_level_table_address()[i];
-		uintptr_t section_base = i * SECTION_SIZE;
-		
-		uint32_t mapping_type = first_level_entry & 0x3;
-		if (mapping_type == 0){
-			if (first_level_entry & 0x4){
-				//section is reserved
-				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Reserved){
-					section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
-				}
-				
-				if (aggregation_count++ == 0){
-					aggregation_start = section_base;
-					aggregation_type = AggregationTypes::Reserved;
-				}
-			} else {
-				//unmapped
-				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Unmapped){
-					section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
-				}
-				
-				if (aggregation_count++ == 0){
-					aggregation_start = section_base;
-					aggregation_type = AggregationTypes::Unmapped;
-				}
-			}
-		} else {
-			if (aggregation_count > 0){
-				section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
-			}
-			
-			if (mapping_type == 1){
-				uintptr_t second_level_physical_address = first_level_entry & 0xfffffc00;
-				uart_puthex(section_base);
-				uart_puts("\tsecond-level page table (");
-				uart_puthex(second_level_physical_address);
-				uart_puts(")\r\n");
-				
-				print_second_level_table_info(get_second_level_table_address(second_level_physical_address), section_base);
-			} else if (mapping_type == 2){
-				uart_puthex(section_base);
-				
-				bool nx = first_level_entry & 0x10;
-				
-				uintptr_t address;
-				if (first_level_entry & (1<<18)){
-					//uart_puthex(first_level_entry);
-					//supersection
-					address = (first_level_entry & 0xff000000);
-					uart_puts("\tsupersection mapped to ");
-					
-					i += 15;
-				} else {
-					//regular section
-					address = (first_level_entry & 0xfff00000);
-					uart_puts("\tsection mapped to ");
-				}
-				
-				uart_puthex(address);
-				
-				if (nx){
-					uart_puts(" NX");
-				}
-				uart_puts("\r\n");
-			} else {
-				uart_puthex(section_base);
-				uart_puts("\tinvalid descriptor!\r\n");
-			}
-		}
-	}
-	
-	if (aggregation_count > 0){
-		section_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
-	}
-}
-
-void PageTable::print_second_level_table_info(uint32_t * table, uintptr_t base) {
-	uintptr_t aggregation_start;
-	uint32_t aggregation_count = 0;
-	AggregationTypes aggregation_type;
-	
-	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++){
-		uint32_t &second_level_entry = table[i];
-		uintptr_t page_base = base + i * PAGE_SIZE;
-		
-		if (!(second_level_entry & 0x2)){
-			if (second_level_entry & 0x4){
-				//section is reserved
-				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Reserved){
-					page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
-				}
-				
-				if (aggregation_count++ == 0){
-					aggregation_start = page_base;
-					aggregation_type = AggregationTypes::Reserved;
-				}
-			} else {
-				//unmapped
-				if (aggregation_count > 0 && aggregation_type != AggregationTypes::Unmapped){
-					page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
-				}
-				
-				if (aggregation_count++ == 0){
-					aggregation_start = page_base;
-					aggregation_type = AggregationTypes::Unmapped;
-				}
-			}
-		} else {
-			if (aggregation_count > 0){
-				page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
-			}
-			
-			uintptr_t address = (second_level_entry & 0xfffff000);
-			
-			bool nx = second_level_entry & 0x1;
-			
-			uart_puts("\t");
-			uart_puthex(page_base);
-			uart_puts("\tpage mapped to ");
-			uart_puthex(address);
-			if (nx){
-				uart_puts(" NX");
-			}
-			uart_puts("\r\n");
-		}
-	}
-	
-	if (aggregation_count > 0){
-		page_aggregation_display(aggregation_start, aggregation_count, aggregation_type);
-	}
 }
 
 uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularity) {
