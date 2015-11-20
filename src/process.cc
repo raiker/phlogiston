@@ -13,10 +13,10 @@ Thread::Thread(Process &_process, Stack _stack, uintptr_t entry_point) :
 
 bool Process::create_thread(uintptr_t entry_point){
 	auto stack_allocation = page_table.reserve_allocate(STACK_NUM_PAGES, AllocationGranularity::Page);
-	if (!stack_allocation.is_success){
+	if (stack_allocation.is_error()){
 		return false;
 	}
-	Stack new_stack = {stack_allocation.value, STACK_NUM_PAGES};
+	Stack new_stack = {stack_allocation.get_value(), STACK_NUM_PAGES};
 	
 	threads.emplace_back(*this, new_stack, entry_point);
 	

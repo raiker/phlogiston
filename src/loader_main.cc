@@ -106,25 +106,29 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	PageTable identity_overlay(page_alloc, false, false);
 	
 	//map all of ram
-	uint32_t nsections = get_num_allocation_units(system_memory.size, AllocationGranularity::Section);	
-	if (!identity_overlay.reserve(0x00000000, nsections, AllocationGranularity::Section).is_success){
+	uint32_t nsections = get_num_allocation_units(system_memory.size, AllocationGranularity::Section);
+	auto identity_reservation = identity_overlay.reserve(0x00000000, nsections, AllocationGranularity::Section);
+	if (identity_reservation.is_error()){
 		uart_puts("Failed to reserve identity memory\r\n");
 		panic(PanicCodes::AssertionFailure);
 	}
 	
-	if (!identity_overlay.map(0x00000000, 0x00000000, nsections, AllocationGranularity::Section)){
+	auto identity_mapping = identity_overlay.map(0x00000000, 0x00000000, nsections, AllocationGranularity::Section);
+	if (identity_mapping.is_error()){
 		uart_puts("Failed to map identity\r\n");
 		panic(PanicCodes::AssertionFailure);
 	}
 	
 	//map mmio
 	nsections = 16;
-	if (!identity_overlay.reserve(0x20000000, nsections, AllocationGranularity::Section).is_success){
+	identity_reservation = identity_overlay.reserve(0x20000000, nsections, AllocationGranularity::Section);
+	if (identity_reservation.is_error()){
 		uart_puts("Failed to reserve identity memory\r\n");
 		panic(PanicCodes::AssertionFailure);
 	}
 	
-	if (!identity_overlay.map(0x20000000, 0x20000000, nsections, AllocationGranularity::Section)){
+	identity_mapping = identity_overlay.map(0x20000000, 0x20000000, nsections, AllocationGranularity::Section);
+	if (identity_mapping.is_error()){
 		uart_puts("Failed to map identity\r\n");
 		panic(PanicCodes::AssertionFailure);
 	}

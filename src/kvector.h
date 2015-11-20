@@ -22,7 +22,7 @@ class KVector {
 void allocate_another_page(){
 	uintptr_t page_base = (uintptr_t)data + PAGE_SIZE * used_pages;
 	
-	if (!page_table.allocate(page_base, 1, AllocationGranularity::Page)){
+	if (page_table.allocate(page_base, 1, AllocationGranularity::Page).is_error()){
 		panic(PanicCodes::AssertionFailure);
 	}
 	
@@ -39,7 +39,7 @@ public:
 		auto reservation = page_table.reserve(1, AllocationGranularity::Section);
 		
 		//no convenient way to return failure here...
-		if (!reservation.is_success){
+		if (reservation.is_error()){
 			panic(PanicCodes::AssertionFailure);
 		}
 		
@@ -50,7 +50,7 @@ public:
 		
 		used_elements = 0;
 		
-		data = (T*)reservation.value;
+		data = (T*)reservation.get_value();
 	}
 	
 	~KVector() {

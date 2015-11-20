@@ -17,13 +17,13 @@ bool test_reservations(PageAlloc &page_alloc) {
 		//reserve single page
 		uart_puts("Single page reservation: ");
 		{
-			auto check = table.get_unit_state(0x10000000, AllocationGranularity::Page);
-			all_passed &= check.is_success && check.value == UnitState::Free;
+			auto check = table.get_block_state(0x10000000, AllocationGranularity::Page);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Free;
 		}
-		all_passed &= table.reserve(0x10000000, 1, AllocationGranularity::Page).is_success;
+		all_passed &= table.reserve(0x10000000, 1, AllocationGranularity::Page).is_success();
 		{
-			auto check = table.get_unit_state(0x10000000, AllocationGranularity::Page);
-			all_passed &= check.is_success && check.value == UnitState::Reserved;
+			auto check = table.get_block_state(0x10000000, AllocationGranularity::Page);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 		}
 		if (all_passed) {
 			uart_puts("passed\r\n");
@@ -35,13 +35,13 @@ bool test_reservations(PageAlloc &page_alloc) {
 		//reserve single section
 		uart_puts("Single section reservation: ");
 		{
-			auto check = table.get_unit_state(0x20000000, AllocationGranularity::Section);
-			all_passed &= check.is_success && check.value == UnitState::Free;
+			auto check = table.get_block_state(0x20000000, AllocationGranularity::Section);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Free;
 		}
-		all_passed &= table.reserve(0x20000000, 1, AllocationGranularity::Section).is_success;
+		all_passed &= table.reserve(0x20000000, 1, AllocationGranularity::Section).is_success();
 		{
-			auto check = table.get_unit_state(0x20000000, AllocationGranularity::Section);
-			all_passed &= check.is_success && check.value == UnitState::Reserved;
+			auto check = table.get_block_state(0x20000000, AllocationGranularity::Section);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 		}
 		if (all_passed) {
 			uart_puts("passed\r\n");
@@ -51,33 +51,33 @@ bool test_reservations(PageAlloc &page_alloc) {
 	
 	
 		//reserve single supersection
-		uart_puts("Single supersection reservation: ");
+		/*uart_puts("Single supersection reservation: ");
 		{
-			auto check = table.get_unit_state(0x30000000, AllocationGranularity::Supersection);
-			all_passed &= check.is_success && check.value == UnitState::Free;
+			auto check = table.get_block_state(0x30000000, AllocationGranularity::Supersection);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Free;
 		}
-		all_passed &= table.reserve(0x30000000, 1, AllocationGranularity::Supersection).is_success;
+		all_passed &= table.reserve(0x30000000, 1, AllocationGranularity::Supersection).is_success();
 		{
-			auto check = table.get_unit_state(0x30000000, AllocationGranularity::Supersection);
-			all_passed &= check.is_success && check.value == UnitState::Reserved;
+			auto check = table.get_block_state(0x30000000, AllocationGranularity::Supersection);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 		}
 		if (all_passed) {
 			uart_puts("passed\r\n");
 		} else {
 			uart_puts("failed\r\n");
-		}
+		}*/
 	
 	
 		//reservation of page in partially-reserved second-level table
 		uart_puts("Reservation of page in partially-reserved second-level table: ");
 		{
-			auto check = table.get_unit_state(0x10001000, AllocationGranularity::Page);
-			all_passed &= check.is_success && check.value == UnitState::Free;
+			auto check = table.get_block_state(0x10001000, AllocationGranularity::Page);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Free;
 		}
-		all_passed &= table.reserve(0x10001000, 1, AllocationGranularity::Page).is_success;
+		all_passed &= table.reserve(0x10001000, 1, AllocationGranularity::Page).is_success();
 		{
-			auto check = table.get_unit_state(0x10001000, AllocationGranularity::Page);
-			all_passed &= check.is_success && check.value == UnitState::Reserved;
+			auto check = table.get_block_state(0x10001000, AllocationGranularity::Page);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 		}
 		if (all_passed) {
 			uart_puts("passed\r\n");
@@ -90,15 +90,15 @@ bool test_reservations(PageAlloc &page_alloc) {
 		uart_puts("Multi-page reservation: ");
 		{
 			for (uint32_t i = 0, addr = 0x11000000; i < 5; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Free;
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Free;
 			}
 		}
-		all_passed &= table.reserve(0x11000000, 5, AllocationGranularity::Page).is_success;
+		all_passed &= table.reserve(0x11000000, 5, AllocationGranularity::Page).is_success();
 		{
 			for (uint32_t i = 0, addr = 0x11000000; i < 5; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Reserved;
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 			}
 		}
 		if (all_passed) {
@@ -110,7 +110,7 @@ bool test_reservations(PageAlloc &page_alloc) {
 	
 		//clashing reservation
 		uart_puts("Clashing reservation: ");
-		all_passed &= not table.reserve(0x10000000, 1, AllocationGranularity::Section).is_success;
+		all_passed &= not table.reserve(0x10000000, 1, AllocationGranularity::Section).is_success();
 		if (all_passed) {
 			uart_puts("passed\r\n");
 		} else {
@@ -121,15 +121,15 @@ bool test_reservations(PageAlloc &page_alloc) {
 		uart_puts("Multi-page reservation in partially-reserved second-level table: ");
 		{
 			for (uint32_t i = 0, addr = 0x10007000; i < 5; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Free;
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Free;
 			}
 		}
-		all_passed &= table.reserve(0x10007000, 5, AllocationGranularity::Page).is_success;
+		all_passed &= table.reserve(0x10007000, 5, AllocationGranularity::Page).is_success();
 		{
 			for (uint32_t i = 0, addr = 0x10007000; i < 5; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Reserved;
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 			}
 		}
 		if (all_passed) {
@@ -142,15 +142,15 @@ bool test_reservations(PageAlloc &page_alloc) {
 		uart_puts("Overflowing reservation: ");
 		{
 			for (uint32_t i = 0, addr = 0x12000000; i < 300; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Free;
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Free;
 			}
 		}
-		all_passed &= table.reserve(0x12000000, 300, AllocationGranularity::Page).is_success;
+		all_passed &= table.reserve(0x12000000, 300, AllocationGranularity::Page).is_success();
 		{
 			for (uint32_t i = 0, addr = 0x12000000; i < 300; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Reserved;
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 			}
 		}
 		if (all_passed) {
@@ -163,15 +163,15 @@ bool test_reservations(PageAlloc &page_alloc) {
 		uart_puts("Overflowing reservation in partially-reserved second-level table: ");
 		{
 			for (uint32_t i = 0, addr = 0x10010000; i < 300; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Free;
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Free;
 			}
 		}
-		all_passed &= table.reserve(0x10010000, 300, AllocationGranularity::Page).is_success;
+		all_passed &= table.reserve(0x10010000, 300, AllocationGranularity::Page).is_success();
 		{
 			for (uint32_t i = 0, addr = 0x10010000; i < 300; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Reserved;
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 			}
 		}
 		if (all_passed) {
@@ -182,7 +182,7 @@ bool test_reservations(PageAlloc &page_alloc) {
 	
 		//partially-overlapping reservation
 		uart_puts("Partially-overlapping reservation: ");
-		all_passed &= not table.reserve(0x11fff000, 4, AllocationGranularity::Page).is_success;
+		all_passed &= not table.reserve(0x11fff000, 4, AllocationGranularity::Page).is_success();
 		if (all_passed) {
 			uart_puts("passed\r\n");
 		} else {
@@ -193,10 +193,10 @@ bool test_reservations(PageAlloc &page_alloc) {
 		uart_puts("Nonspecific single page reservation: ");
 		{
 			auto reservation = table.reserve(1, AllocationGranularity::Page);
-			all_passed &= reservation.is_success;
+			all_passed &= reservation.is_success();
 		
-			auto check = table.get_unit_state(reservation.value, AllocationGranularity::Page);
-			all_passed &= check.is_success && check.value == UnitState::Reserved;
+			auto check = table.get_block_state(reservation.get_value(), AllocationGranularity::Page);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 		}
 		if (all_passed) {
 			uart_puts("passed\r\n");
@@ -207,10 +207,10 @@ bool test_reservations(PageAlloc &page_alloc) {
 		uart_puts("Nonspecific single section reservation: ");
 		{
 			auto reservation = table.reserve(1, AllocationGranularity::Section);
-			all_passed &= reservation.is_success;
+			all_passed &= reservation.is_success();
 		
-			auto check = table.get_unit_state(reservation.value, AllocationGranularity::Section);
-			all_passed &= check.is_success && check.value == UnitState::Reserved;
+			auto check = table.get_block_state(reservation.get_value(), AllocationGranularity::Section);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 		}
 		if (all_passed) {
 			uart_puts("passed\r\n");
@@ -218,28 +218,28 @@ bool test_reservations(PageAlloc &page_alloc) {
 			uart_puts("failed\r\n");
 		}
 	
-		uart_puts("Nonspecific single supersection reservation: ");
+		/*uart_puts("Nonspecific single supersection reservation: ");
 		{
 			auto reservation = table.reserve(1, AllocationGranularity::Supersection);
-			all_passed &= reservation.is_success;
+			all_passed &= reservation.is_success();
 		
-			auto check = table.get_unit_state(reservation.value, AllocationGranularity::Supersection);
-			all_passed &= check.is_success && check.value == UnitState::Reserved;
+			auto check = table.get_block_state(reservation.get_value(), AllocationGranularity::Supersection);
+			all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 		}
 		if (all_passed) {
 			uart_puts("passed\r\n");
 		} else {
 			uart_puts("failed\r\n");
-		}
+		}*/
 	
 		uart_puts("Nonspecific multi-page reservation: ");
 		{
 			auto reservation = table.reserve(64, AllocationGranularity::Page);
-			all_passed &= reservation.is_success;
+			all_passed &= reservation.is_success();
 		
-			for (uint32_t i = 0, addr = reservation.value; i < 64; i++, addr += 0x1000){
-				auto check = table.get_unit_state(addr, AllocationGranularity::Page);
-				all_passed &= check.is_success && check.value == UnitState::Reserved;
+			for (uint32_t i = 0, addr = reservation.get_value(); i < 64; i++, addr += 0x1000){
+				auto check = table.get_block_state(addr, AllocationGranularity::Page);
+				all_passed &= check.is_success() && check.get_value() == BlockState::Reserved;
 			}
 		}
 		if (all_passed) {

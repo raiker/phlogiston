@@ -5,14 +5,75 @@
 #include <atomic>
 #include <algorithm>
 
+enum class AggregationTypes {
+	Unmapped,
+	Reserved,
+};
+
 static uint32_t get_allocation_pages(AllocationGranularity granularity){
 	switch (granularity){
 		case AllocationGranularity::Page:
 			return 1;
 		case AllocationGranularity::Section:
 			return 256;
-		case AllocationGranularity::Supersection:
-			return 4096;
+//		case AllocationGranularity::Supersection:
+//			return 4096;
+		default:
+			panic(PanicCodes::IncompatibleParameter);
+	}
+}
+
+static BlockState get_state_from_descriptor(uint32_t descriptor){
+	if ((descriptor & 0x7) == 0){
+		return BlockState::Free;
+	} else if ((descriptor & 0x7) == 4){
+		return BlockState::Reserved;
+	} else {
+		return BlockState::Committed;
+	}
+}
+
+static void section_aggregation_display(
+	uintptr_t &aggregation_start,
+	uint32_t &aggregation_count,
+	AggregationTypes &aggregation_type)
+{
+	uart_puthex(aggregation_start);
+	uart_puts("\t");
+	uart_putdec(aggregation_count);
+	if (aggregation_type == AggregationTypes::Unmapped){
+		uart_puts(" unmapped sections\r\n");
+	} else {
+		uart_puts(" reserved sections\r\n");
+	}
+	aggregation_count = 0;
+}
+
+static void page_aggregation_display(
+	uintptr_t &aggregation_start,
+	uint32_t &aggregation_count,
+	AggregationTypes &aggregation_type)
+{
+	uart_puts("\t");
+	uart_puthex(aggregation_start);
+	uart_puts("\t");
+	uart_putdec(aggregation_count);
+	if (aggregation_type == AggregationTypes::Unmapped){
+		uart_puts(" unmapped pages\r\n");
+	} else {
+		uart_puts(" reserved pages\r\n");
+	}
+	aggregation_count = 0;
+}
+
+uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularity) {
+	switch (granularity){
+		case AllocationGranularity::Page:
+			return bytes / PAGE_SIZE + ((bytes & (PAGE_SIZE-1)) ? 1 : 0);
+		case AllocationGranularity::Section:
+			return bytes / SECTION_SIZE + ((bytes & (SECTION_SIZE-1)) ? 1 : 0);
+//		case AllocationGranularity::Supersection:
+//			return bytes / SUPERSECTION_SIZE + ((bytes & (SUPERSECTION_SIZE-1)) ? 1 : 0);
 		default:
 			panic(PanicCodes::IncompatibleParameter);
 	}
@@ -52,7 +113,7 @@ PageTable::PageTable(PageAlloc &_page_alloc, bool is_supervisor, bool is_referen
 		map(0x00000000, 0x00000000, 1, AllocationGranularity::Page);
 		auto descriptor = get_page_descriptor(0x00000000);
 		if (descriptor.is_success){
-			*descriptor.value |= 0x1; //NX bit
+			*descriptor.get_value() |= 0x1; //NX bit
 		}
 	}*/
 }
@@ -103,7 +164,7 @@ PageTable::~PageTable() {
 	}
 }
 
-Result<uintptr_t> PageTable::reserve(uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t, PageTableErrors> PageTable::reserve(uint32_t units, AllocationGranularity granularity){
 	auto lock = spinlock_cs.acquire();
 	
 	switch (granularity){
@@ -111,14 +172,14 @@ Result<uintptr_t> PageTable::reserve(uint32_t units, AllocationGranularity granu
 			return reserve_pages(units);
 		case AllocationGranularity::Section:
 			return reserve_sections(units);
-		case AllocationGranularity::Supersection:
-			return reserve_supersections(units);
+//		case AllocationGranularity::Supersection:
+//			return reserve_supersections(units);
 		default:
 			panic(PanicCodes::IncompatibleParameter);
 	}
 }
 
-Result<uintptr_t> PageTable::reserve(uintptr_t address, uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t, PageTableErrors> PageTable::reserve(uintptr_t address, uint32_t units, AllocationGranularity granularity){
 	auto lock = spinlock_cs.acquire();
 	
 	switch (granularity){
@@ -126,38 +187,40 @@ Result<uintptr_t> PageTable::reserve(uintptr_t address, uint32_t units, Allocati
 			return reserve_pages(address, units);
 		case AllocationGranularity::Section:
 			return reserve_sections(address, units);
-		case AllocationGranularity::Supersection:
-			return reserve_supersections(address, units);
+//		case AllocationGranularity::Supersection:
+//			return reserve_supersections(address, units);
 		default:
 			panic(PanicCodes::IncompatibleParameter);
 	}
 }
 
-Result<uintptr_t> PageTable::reserve_allocate(uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t, PageTableErrors> PageTable::reserve_allocate(uint32_t units, AllocationGranularity granularity){
 	//doesn't acquire lock; convenience method
 	
-	Result<uintptr_t> reservation = reserve(units, granularity);
-	if (reservation.is_success){
-		if (!allocate(reservation.value, units, granularity)){
-			return Result<uintptr_t>::failure();
+	Result<uintptr_t, PageTableErrors> reservation = reserve(units, granularity);
+	if (reservation.is_success()){
+		auto alloc_result = allocate(reservation.get_value(), units, granularity);
+		if (alloc_result.is_error()){
+			return Result<uintptr_t, PageTableErrors>::failure(alloc_result.get_error());
 		}
 	}
 	return reservation;
 }
 
-Result<uintptr_t> PageTable::reserve_allocate(uintptr_t address, uint32_t units, AllocationGranularity granularity){
+Result<uintptr_t, PageTableErrors> PageTable::reserve_allocate(uintptr_t address, uint32_t units, AllocationGranularity granularity){
 	//doesn't acquire lock; convenience method
 	
-	Result<uintptr_t> reservation = reserve(address, units, granularity);
-	if (reservation.is_success){
-		if (!allocate(reservation.value, units, granularity)){
-			return Result<uintptr_t>::failure();
+	Result<uintptr_t, PageTableErrors> reservation = reserve(address, units, granularity);
+	if (reservation.is_success()){
+		auto alloc_result = allocate(reservation.get_value(), units, granularity);
+		if (alloc_result.is_error()){
+			return Result<uintptr_t, PageTableErrors>::failure(alloc_result.get_error());
 		}
 	}
 	return reservation;
 }
 
-bool PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
+ErrorResult<PageTableErrors> PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
 #ifdef VERBOSE
 	uart_puts("PageTable::allocate(virtual_address=");
 	uart_puthex(virtual_address);
@@ -181,62 +244,67 @@ bool PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGr
 		uintptr_t map_address = virtual_address + i * get_allocation_pages(granularity) * PAGE_SIZE;
 		
 		//map it
-		bool success;
+		ErrorResult<PageTableErrors> commit_result = ErrorResult<PageTableErrors>::success();
 		
 		switch (granularity){
 			case AllocationGranularity::Page:
-				success = commit_page(map_address, physical_address);
+				commit_result = commit_page(map_address, physical_address);
 				break;
 			case AllocationGranularity::Section:
-				success = commit_section(map_address, physical_address);
-				break;
-			case AllocationGranularity::Supersection:
-				success = commit_supersection(map_address, physical_address);
+				commit_result = commit_section(map_address, physical_address);
 				break;
 			default:
 				panic(PanicCodes::IncompatibleParameter);
 		}
 		
-		if (!success){
+		if (commit_result.is_error()){
 			uart_puts("failure\r\n");
 			page_alloc.ref_release(physical_address, get_allocation_pages(granularity)); //free the allocated memory
 			
 			//clean up previously-allocated pages
-			decommit(virtual_address, i, granularity);
-			return false;
+			if (granularity == AllocationGranularity::Page){
+				decommit_pages(virtual_address, i); //assume success
+			} else if (granularity == AllocationGranularity::Section){
+				decommit_sections(virtual_address, i);
+			}
+			return commit_result;
 		}
 	}
 	
-	return true;
+	return ErrorResult<PageTableErrors>::success();
 }
 
-bool PageTable::map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
+ErrorResult<PageTableErrors> PageTable::map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
 	auto lock = spinlock_cs.acquire();
 	
 	for (uint32_t i = 0; i < units; i++){
 		uintptr_t offset = i * get_allocation_pages(granularity) * PAGE_SIZE;
 		
 		//map it
-		bool success;
+		ErrorResult<PageTableErrors> commit_result = ErrorResult<PageTableErrors>::success();
 		
 		switch (granularity){
 			case AllocationGranularity::Page:
-				success = commit_page(virtual_address + offset, physical_address + offset);
+				commit_result = commit_page(virtual_address + offset, physical_address + offset);
 				break;
 			case AllocationGranularity::Section:
-				success = commit_section(virtual_address + offset, physical_address + offset);
+				commit_result = commit_section(virtual_address + offset, physical_address + offset);
 				break;
-			case AllocationGranularity::Supersection:
-				success = commit_supersection(virtual_address + offset, physical_address + offset);
+//			case AllocationGranularity::Supersection:
+//				commit_result = commit_supersection(virtual_address + offset, physical_address + offset);
 				break;
 			default:
 				panic(PanicCodes::IncompatibleParameter);
 		}
 		
-		if (!success) {
-			//clean up previously-mapped pages
-			decommit(virtual_address, i, granularity);
-			return false;
+		if (commit_result.is_error()) {
+			//clean up previously-allocated pages
+			if (granularity == AllocationGranularity::Page){
+				decommit_pages(virtual_address, i); //assume success
+			} else if (granularity == AllocationGranularity::Section){
+				decommit_sections(virtual_address, i);
+			}
+			return commit_result;
 		}
 		
 		if (reference_counted){
@@ -245,7 +313,7 @@ bool PageTable::map(uintptr_t virtual_address, uintptr_t physical_address, uint3
 		}
 	}
 	
-	return true;
+	return ErrorResult<PageTableErrors>::success();
 }
 
 //follows redesign
@@ -279,36 +347,36 @@ ErrorResult<PageTableErrors> PageTable::release(uintptr_t virtual_address, uint3
 			panic(PanicCodes::IncompatibleParameter);
 	}}
 
-Result<UnitState> PageTable::get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity) {
+Result<BlockState, PageTableErrors> PageTable::get_block_state(uintptr_t virtual_address, AllocationGranularity granularity) {
 	auto lock = spinlock_cs.acquire();
 	
 	switch (granularity){
 		case AllocationGranularity::Page:
 			{
-				Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address, false);
-				if (section_descriptor.is_success){
+				Result<uint32_t*, PageTableErrors> section_descriptor = get_section_descriptor(virtual_address, false);
+				if (section_descriptor.is_success()){
 					//it's mapped as a section
-					return Result<UnitState>::success(get_state_from_descriptor(*section_descriptor.value));
+					return Result<BlockState, PageTableErrors>::success(get_state_from_descriptor(*section_descriptor.get_value()));
 				}
 				//it's mapped as a second-level table
-				Result<uint32_t*> page_descriptor = get_page_descriptor(virtual_address);
-				if (!page_descriptor.is_success){
-					return Result<UnitState>::failure();
+				Result<uint32_t*, PageTableErrors> page_descriptor = get_page_descriptor(virtual_address);
+				if (page_descriptor.is_error()){
+					return Result<BlockState, PageTableErrors>::failure(page_descriptor.get_error());
 				}
 				
-				return Result<UnitState>::success(get_state_from_descriptor(*page_descriptor.value));
+				return Result<BlockState, PageTableErrors>::success(get_state_from_descriptor(*page_descriptor.get_value()));
 			}
 		case AllocationGranularity::Section:
 			{
-				Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address, false);
-				if (section_descriptor.is_success){
+				Result<uint32_t*, PageTableErrors> section_descriptor = get_section_descriptor(virtual_address, false);
+				if (section_descriptor.is_success()){
 					//it's mapped as a section
-					return Result<UnitState>::success(get_state_from_descriptor(*section_descriptor.value));
+					return Result<BlockState, PageTableErrors>::success(get_state_from_descriptor(*section_descriptor.get_value()));
 				} else {
-					return Result<UnitState>::failure();
+					return Result<BlockState, PageTableErrors>::failure(section_descriptor.get_error());
 				}
 			}
-		case AllocationGranularity::Supersection:
+/*		case AllocationGranularity::Supersection:
 			{
 				virtual_address &= 0xff000000;
 				bool all_free = true;
@@ -316,13 +384,13 @@ Result<UnitState> PageTable::get_unit_state(uintptr_t virtual_address, Allocatio
 				bool all_committed = true;
 				
 				for (uint32_t i = 0; i < 16; i++){
-					Result<uint32_t*> section_descriptor = get_section_descriptor(virtual_address + i * SECTION_SIZE, false);
-					if (section_descriptor.is_success){
+					Result<uint32_t*, PageTableErrors> section_descriptor = get_section_descriptor(virtual_address + i * SECTION_SIZE, false);
+					if (section_descriptor.is_success()){
 						//it's mapped as a supersection
-						if ((*section_descriptor.value & 0x7) == 0){
+						if ((*section_descriptor.get_value() & 0x7) == 0){
 							all_reserved = false;
 							all_committed = false;
-						} else if ((*section_descriptor.value & 0x7) == 4){
+						} else if ((*section_descriptor.get_value() & 0x7) == 4){
 							all_free = false;
 							all_committed = false;
 						} else {
@@ -330,32 +398,32 @@ Result<UnitState> PageTable::get_unit_state(uintptr_t virtual_address, Allocatio
 							all_reserved = false;
 						}
 					} else {
-						return Result<UnitState>::failure();
+						return Result<BlockState, PageTableErrors>::failure(section_descriptor.get_error());
 					}
 				}
 				
 				if (all_free){
-					return Result<UnitState>::success(UnitState::Free);
+					return Result<BlockState, PageTableErrors>::success(BlockState::Free);
 				} else if (all_reserved){
-					return Result<UnitState>::success(UnitState::Reserved);
+					return Result<BlockState, PageTableErrors>::success(BlockState::Reserved);
 				} else if (all_committed){
-					return Result<UnitState>::success(UnitState::Committed);
+					return Result<BlockState, PageTableErrors>::success(BlockState::Committed);
 				} else {
-					return Result<UnitState>::failure();
+					return Result<BlockState, PageTableErrors>::failure();
 				}
-			}
+			}*/
 		default:
-			return Result<UnitState>::failure();
+			return Result<BlockState, PageTableErrors>::failure(PageTableErrors::InconsistentSupersection);
 	}
 }
 
-Result<uintptr_t> PageTable::virtual_to_physical(uintptr_t virtual_address) {
+Result<uintptr_t, PageTableErrors> PageTable::virtual_to_physical(uintptr_t virtual_address) {
 	auto lock = spinlock_cs.acquire();
 	
 	return virtual_to_physical_internal(virtual_address);
 }
 
-Result<uintptr_t> PageTable::physical_to_virtual(uintptr_t physical_address) {
+Result<uintptr_t, PageTableErrors> PageTable::physical_to_virtual(uintptr_t physical_address) {
 	auto lock = spinlock_cs.acquire();
 	
 	return physical_to_virtual_internal(physical_address);
@@ -449,7 +517,7 @@ void PageTable::print_table_info() {
 //***PRIVATE METHODS***
 //*********************
 
-Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_address) {
+Result<uintptr_t, PageTableErrors> PageTable::virtual_to_physical_internal(uintptr_t virtual_address) {
 	//apparently this can be done in hardware
 	//http://blogs.bu.edu/md/2011/12/06/tagged-tlbs-and-context-switching/
 	
@@ -469,7 +537,7 @@ Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_addr
 	uint32_t first_level_index = virtual_address >> 20;
 	
 	if (first_level_index >= first_level_num_entries) {
-		return Result<uintptr_t>::failure();
+		return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::OutOfBounds);
 	}
 	
 	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
@@ -486,10 +554,10 @@ Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_addr
 				if (second_level_entry & 0x2) {
 					//page is committed
 					uintptr_t address = (second_level_entry & 0xfffff000) | (virtual_address & 0x00000fff);
-					return Result<uintptr_t>::success(address);
+					return Result<uintptr_t, PageTableErrors>::success(address);
 				} else {
 					//page is unallocated or reserved (we don't use large pages)
-					return Result<uintptr_t>::failure();
+					return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::AddressNotMapped);
 				}
 			}
 			break;
@@ -498,20 +566,20 @@ Result<uintptr_t> PageTable::virtual_to_physical_internal(uintptr_t virtual_addr
 			if (first_level_entry & (1<<18)){
 				//supersection
 				uintptr_t address = (first_level_entry & 0xff000000) | (virtual_address & 0x00ffffff);
-				return Result<uintptr_t>::success(address);
+				return Result<uintptr_t, PageTableErrors>::success(address);
 			} else {
 				//regular section
 				uintptr_t address = (first_level_entry & 0xfff00000) | (virtual_address & 0x000fffff);
-				return Result<uintptr_t>::success(address);
+				return Result<uintptr_t, PageTableErrors>::success(address);
 			}
 			break;
 		default:
 			//memory is not currently committed
-			return Result<uintptr_t>::failure();
+			return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::AddressNotMapped);
 	}
 }
 
-Result<uintptr_t> PageTable::physical_to_virtual_internal(uintptr_t physical_address) {
+Result<uintptr_t, PageTableErrors> PageTable::physical_to_virtual_internal(uintptr_t physical_address) {
 	//very slow, avoid if possible
 	//requires iterating through all the first- and second-level page table entries
 	//returns only the first virtual mapping that matches the target
@@ -534,7 +602,7 @@ Result<uintptr_t> PageTable::physical_to_virtual_internal(uintptr_t physical_add
 							if ((second_level_entry & 0xfffff000) == (physical_address & 0xfffff000)){
 								//match
 								uintptr_t address = (first_level_entry & 0xfffff000) | (physical_address & 0x00000fff);
-								return Result<uintptr_t>::success(address);
+								return Result<uintptr_t, PageTableErrors>::success(address);
 							}
 						}
 					}
@@ -547,14 +615,14 @@ Result<uintptr_t> PageTable::physical_to_virtual_internal(uintptr_t physical_add
 					if ((first_level_entry & 0xff000000) == (physical_address & 0xff000000)){
 						//match
 						uintptr_t address = (first_level_entry & 0xff000000) | (physical_address & 0x00ffffff);
-						return Result<uintptr_t>::success(address);
+						return Result<uintptr_t, PageTableErrors>::success(address);
 					}
 				} else {
 					//regular section
 					if ((first_level_entry & 0xfff00000) == (physical_address & 0xfff00000)){
 						//match
 						uintptr_t address = (first_level_entry & 0xfff00000) | (physical_address & 0x000fffff);
-						return Result<uintptr_t>::success(address);
+						return Result<uintptr_t, PageTableErrors>::success(address);
 					}
 				}
 				break;
@@ -564,7 +632,7 @@ Result<uintptr_t> PageTable::physical_to_virtual_internal(uintptr_t physical_add
 		}
 	}
 	
-	return Result<uintptr_t>::failure();
+	return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::AddressNotMapped);
 }
 
 uint32_t * PageTable::create_second_level_table() {
@@ -648,7 +716,7 @@ MultiBlockState PageTable::get_page_state(uintptr_t virtual_address, uint32_t nu
 	MultiBlockState retval;
 	
 	uint32_t num_unchecked_pages = num_pages;
-	uintptr_t check_base = base;
+	uintptr_t check_base = virtual_address;
 	
 	while (num_unchecked_pages > 0){
 		uint32_t pages_in_rest_of_section = ((check_base & 0xfff00000) - check_base + SECTION_SIZE) / PAGE_SIZE;
@@ -668,40 +736,25 @@ MultiBlockState PageTable::get_page_state(uintptr_t virtual_address, uint32_t nu
 MultiBlockState PageTable::get_page_state_inside_section(uintptr_t virtual_address, uint32_t num_pages, bool allow_breaking_sections) {
 	auto result = get_section_descriptor(virtual_address, true);
 	
-	if (!result.is_success) return MultiBlockState {false, false, false};
+	if (result.is_error()) return MultiBlockState {false, false, false};
 	
-	if ((*result.value & 0x3) == 1) {
+	if ((*result.get_value() & 0x3) == 1) {
 		//second-level page table
 		MultiBlockState retval;
 		for (uint32_t i = 0; i < num_pages; i++){
 			result = get_page_descriptor(virtual_address + i * PAGE_SIZE);
 			
-			if (!result.is_success) {
+			if (result.is_error()) {
 				retval &= MultiBlockState {false, false, false};
 			}
 			
-			if ((*result.value & 0x7) == 0) {
-				retval &= MultiBlockState {true, false, false};
-			} else if ((*result.value * 0x7 = 0x4){
-				retval &= MultiBlockState {false, true, false};
-			} else {
-				retval &= MultiBlockState {false, false, true};
-			}
+			retval &= get_state_from_descriptor(*result.get_value());
 		}
 		return retval;
 	} else {
 		//it's a fully-mapped section
 		if (allow_breaking_sections){
-			if ((*result.value & 0x7) == 0){
-				//free section
-				return MultiBlockState {true, false, false};
-			} else if ((*result.value & 0x7) == 0x4){
-				//section is reserved
-				return MultiBlockState {false, true, false};
-			} else {
-				//section is mapped
-				return MultiBlockState {false, false, true};
-			}
+			return get_state_from_descriptor(*result.get_value());
 		} else {
 			return MultiBlockState {false, false, false};
 		}
@@ -717,32 +770,25 @@ MultiBlockState PageTable::get_section_state(uintptr_t virtual_address, uint32_t
 	for (uint32_t i = 0; i < num_sections; i++){
 		auto result = get_section_descriptor(virtual_address + i * SECTION_SIZE, allow_combining_pages);
 		
-		if (!result.is_success) return MultiBlockState {false, false, false};
+		if (result.is_error()) return MultiBlockState {false, false, false};
 		
-		if ((*result.value & 0x3) == 1) {
+		if ((*result.get_value() & 0x3) == 1) {
 			//second-level page table
 			retval &= get_page_state_inside_section(virtual_address + i * SECTION_SIZE, SECTION_SIZE / PAGE_SIZE, true);
 		} else {
 			//it's a fully-mapped section
-			if (allow_breaking_sections){
-				if ((*result.value & 0x7) == 0){
-					//free section
-					retval &= MultiBlockState {true, false, false};
-				} else if ((*result.value & 0x7) == 0x4){
-					//section is reserved
-					retval &= MultiBlockState {false, true, false};
-				} else {
-					//section is mapped
-					retval &= MultiBlockState {false, false, true};
-				}
+			if (allow_combining_pages){
+				retval &= get_state_from_descriptor(*result.get_value());
 			} else {
 				return MultiBlockState {false, false, false};
 			}
 		}
 	}
+	
+	return retval;
 }
 
-Result<uintptr_t> PageTable::reserve_pages(uint32_t num_pages){
+Result<uintptr_t, PageTableErrors> PageTable::reserve_pages(uint32_t num_pages){
 	uint32_t * first_level_table = get_first_level_table_address();
 	
 	//trawl through all the second-level page tables looking for a space
@@ -772,7 +818,7 @@ Result<uintptr_t> PageTable::reserve_pages(uint32_t num_pages){
 						second_level_table[k] = 0x00000004; //mark as reserved
 					}
 					
-					return Result<uintptr_t>::success(i * SECTION_SIZE + start_index * PAGE_SIZE);
+					return Result<uintptr_t, PageTableErrors>::success(i * SECTION_SIZE + start_index * PAGE_SIZE);
 				}
 			}
 		}
@@ -793,15 +839,15 @@ Result<uintptr_t> PageTable::reserve_pages(uint32_t num_pages){
 				second_level_table[j] = 0x00000004;
 			}
 			
-			return Result<uintptr_t>::success(i * SECTION_SIZE);
+			return Result<uintptr_t, PageTableErrors>::success(i * SECTION_SIZE);
 		}
 	}
 	
 	//if we get here, we have insufficient address space left (i.e. it's all been reserved (or allocated... ^_^))
-	return Result<uintptr_t>::failure();
+	return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::MemorySpaceExhausted);
 }
 
-Result<uintptr_t> PageTable::reserve_sections(uint32_t num_sections) {
+Result<uintptr_t, PageTableErrors> PageTable::reserve_sections(uint32_t num_sections) {
 	uint32_t * first_level_table = get_first_level_table_address();
 	
 	uint32_t contiguous_free_sections = 0;
@@ -822,15 +868,15 @@ Result<uintptr_t> PageTable::reserve_sections(uint32_t num_sections) {
 				first_level_table[j] = 0x00000004;
 			}
 			
-			return Result<uintptr_t>::success(start_index * SECTION_SIZE);
+			return Result<uintptr_t, PageTableErrors>::success(start_index * SECTION_SIZE);
 		}
 	}
 	
 	//if we get here, we have insufficient address space left (i.e. it's all been reserved (or allocated... ^_^))
-	return Result<uintptr_t>::failure();
+	return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::MemorySpaceExhausted);
 }
 
-Result<uintptr_t> PageTable::reserve_supersections(uint32_t num_supersections) {
+/*Result<uintptr_t, PageTableErrors> PageTable::reserve_supersections(uint32_t num_supersections) {
 	uint32_t * first_level_table = get_first_level_table_address();
 	
 	uint32_t contiguous_free_supersections = 0;
@@ -856,15 +902,15 @@ Result<uintptr_t> PageTable::reserve_supersections(uint32_t num_supersections) {
 				}
 			}
 			
-			return Result<uintptr_t>::success(start_index * SECTION_SIZE);
+			return Result<uintptr_t, PageTableErrors>::success(start_index * SECTION_SIZE);
 		}
 	}
 	
 	//if we get here, we have no address space left (i.e. it's all been reserved (or allocated... ^_^))
-	return Result<uintptr_t>::failure();
-}
+	return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::MemorySpaceExhausted);
+}*/
 
-Result<uintptr_t> PageTable::reserve_pages(uintptr_t base, uint32_t num_pages) {
+Result<uintptr_t, PageTableErrors> PageTable::reserve_pages(uintptr_t base, uint32_t num_pages) {
 	base &= 0xfffff000;
 	
 	//check the pages are all reservable
@@ -876,7 +922,7 @@ Result<uintptr_t> PageTable::reserve_pages(uintptr_t base, uint32_t num_pages) {
 		uint32_t pages_to_check = std::min(num_unchecked_pages, pages_in_rest_of_section);
 		
 		if (!check_section_partially_reservable(check_base, pages_to_check)){
-			return Result<uintptr_t>::failure();
+			return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::SomeBlocksNotFree);
 		}
 		
 		num_unchecked_pages -= pages_to_check;
@@ -897,60 +943,60 @@ Result<uintptr_t> PageTable::reserve_pages(uintptr_t base, uint32_t num_pages) {
 		reservation_base = (reservation_base & 0xfff00000) + SECTION_SIZE;
 	}
 	
-	return Result<uintptr_t>::success(base);
+	return Result<uintptr_t, PageTableErrors>::success(base);
 }
 
-Result<uintptr_t> PageTable::reserve_sections(uintptr_t base, uint32_t num_sections) {
+Result<uintptr_t, PageTableErrors> PageTable::reserve_sections(uintptr_t base, uint32_t num_sections) {
 	base &= 0xfff00000;
 	
 	for (uint32_t i = 0; i < num_sections; i++){
 		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
-		if (!result.is_success || *result.value & 0x7){
-			return Result<uintptr_t>::failure();
+		if (result.is_error() || (*result.get_value() & 0x7)){
+			return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::SomeBlocksNotFree);
 		}
 	}
 	
 	for (uint32_t i = 0; i < num_sections; i++){
 		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
-		*result.value = 0x00000004;
+		*result.get_value() = 0x00000004;
 	}
 	
-	return Result<uintptr_t>::success(base);
+	return Result<uintptr_t, PageTableErrors>::success(base);
 }
 
-Result<uintptr_t> PageTable::reserve_supersections(uintptr_t base, uint32_t num_supersections) {
+/*Result<uintptr_t, PageTableErrors> PageTable::reserve_supersections(uintptr_t base, uint32_t num_supersections) {
 	base &= 0xff000000;
 	
 	for (uint32_t i = 0; i < num_supersections * 16; i++){
 		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
-		if (!result.is_success || *result.value & 0x7){
-			return Result<uintptr_t>::failure();
+		if (!result.is_success || *result.get_value() & 0x7){
+			return Result<uintptr_t, PageTableErrors>::failure(PageTableErrors::SomeBlocksNotFree);
 		}
 	}
 	
 	for (uint32_t i = 0; i < num_supersections * 16; i++){
 		auto result = get_section_descriptor(base + i * SECTION_SIZE, false);
-		*result.value = 0x00000004;
+		*result.get_value() = 0x00000004;
 	}
 	
-	return Result<uintptr_t>::success(base);
-}
+	return Result<uintptr_t, PageTableErrors>::success(base);
+}*/
 
 //checks whether num_pages pages can be reserved in the section enclosing base, starting from base
 bool PageTable::check_section_partially_reservable(uintptr_t base, uint32_t num_pages) {
 	auto result = get_section_descriptor(base, true);
 	
-	if (!result.is_success) return false;
+	if (result.is_error()) return false;
 	
 	//if result is a free section, we're fine
-	if ((*result.value & 0x7) == 0) return true;
+	if ((*result.get_value() & 0x7) == 0) return true;
 	
 	//second-level page table
-	if ((*result.value & 0x3) == 1) {
+	if ((*result.get_value() & 0x3) == 1) {
 		for (uint32_t i = 0; i < num_pages; i++){
 			result = get_page_descriptor(base + i * PAGE_SIZE);
 			
-			if (!result.is_success || (*result.value & 0x7)) return false;
+			if (result.is_error() || (*result.get_value() & 0x7)) return false;
 		}
 		return true;
 	}
@@ -965,14 +1011,14 @@ void PageTable::reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
 	
 	uint32_t * second_level_table;
 	
-	if ((*result.value & 0x7) == 0) {
+	if ((*result.get_value() & 0x7) == 0) {
 		//create new second-level table
 		//TODO: fix this
 		uint32_t * new_table = create_second_level_table();
-		*result.value = (uint32_t)new_table | 0x1 | (SUPERVISOR_DOMAIN << 5);
+		*result.get_value() = (uint32_t)new_table | 0x1 | (SUPERVISOR_DOMAIN << 5);
 		second_level_table = get_second_level_table_address((uintptr_t)new_table);
 	} else {
-		second_level_table = get_second_level_table_address(*result.value & 0xfffffc00);
+		second_level_table = get_second_level_table_address(*result.get_value() & 0xfffffc00);
 	}
 	
 	uint32_t start_index = (base & 0x000ff000) >> 12;
@@ -982,43 +1028,43 @@ void PageTable::reserve_pages_from_section(uintptr_t base, uint32_t num_pages) {
 	}
 }
 
-bool PageTable::commit_page(uintptr_t virtual_address, uintptr_t physical_address){
+ErrorResult<PageTableErrors> PageTable::commit_page(uintptr_t virtual_address, uintptr_t physical_address){
 	//TODO: Permission bits
 	virtual_address &= 0xfffff000;
 	physical_address &= 0xfffff000;
 	
 	auto result = get_page_descriptor(virtual_address);
 	
-	if (result.is_success){
+	if (result.is_success()){
 		//in order to be committed, the page needs to be reserved already
-		if ((*result.value & 0x7) == 0x4){
+		if ((*result.get_value() & 0x7) == 0x4){
 			//reserved but not committed yet
-			*result.value = physical_address | 0x00000002;
-			return true;
+			*result.get_value() = physical_address | 0x00000002;
+			return ErrorResult<PageTableErrors>::success();
 		}
 	}
-	return false;
+	return ErrorResult<PageTableErrors>::failure(result.get_error());
 }
 
-bool PageTable::commit_section(uintptr_t virtual_address, uintptr_t physical_address){
+ErrorResult<PageTableErrors> PageTable::commit_section(uintptr_t virtual_address, uintptr_t physical_address){
 	//TODO: Permission bits
 	virtual_address &= 0xfff00000;
 	physical_address &= 0xfff00000;
 	
 	auto result = get_section_descriptor(virtual_address, false);
 	
-	if (result.is_success){
+	if (result.is_success()){
 		//in order to be committed, the section needs to be reserved already
-		if ((*result.value & 0x7) == 0x4){
+		if ((*result.get_value() & 0x7) == 0x4){
 			//reserved but not committed yet
-			*result.value = physical_address | 0x00000002;
-			return true;
+			*result.get_value() = physical_address | 0x00000002;
+			return ErrorResult<PageTableErrors>::success();;
 		}
 	}
-	return false;
+	return ErrorResult<PageTableErrors>::failure(result.get_error());
 }
 
-bool PageTable::commit_supersection(uintptr_t virtual_address, uintptr_t physical_address){
+/*ErrorResult<PageTableErrors> PageTable::commit_supersection(uintptr_t virtual_address, uintptr_t physical_address){
 #ifdef VERBOSE
 	uart_puts("PageTable::commit_supersection(virtual_address=");
 	uart_puthex(virtual_address);
@@ -1036,116 +1082,116 @@ bool PageTable::commit_supersection(uintptr_t virtual_address, uintptr_t physica
 	if (result.is_success){
 		//in order to be committed, the sections need to be reserved already
 		for (uint32_t i = 0; i < 16; i++){
-			if ((result.value[i] & 0x07) != 0x04) return false;
+			if ((result.get_value()[i] & 0x07) != 0x04) return false;
 		}
 		for (uint32_t i = 0; i < 16; i++){
-			result.value[i] = physical_address | 0x00040002;
+			result.get_value()[i] = physical_address | 0x00040002;
 		}
-		return true;
+		return ErrorResult<PageTableErrors>::success();
 	}
-	return false;
-}
+	return ErrorResult<PageTableErrors>::failure(result.get_error());
+}*/
 
 //virtual_address is page-aligned
 ErrorResult<PageTableErrors> PageTable::decommit_pages(uintptr_t virtual_address, uint32_t num_pages) {
 	MultiBlockState page_state = get_page_state(virtual_address, num_pages, false);
 	
 	if (!page_state.is_committed){
-		return ErrorResult::failure(PageTableErrors::SomeBlocksNotCommitted);
+		return ErrorResult<PageTableErrors>::failure(PageTableErrors::SomeBlocksNotCommitted);
 	}
 	
 	for (uint32_t i = 0; i < num_pages; i++){
 		auto result = get_page_descriptor(virtual_address + i * PAGE_SIZE);
 		
-		if (!result.is_success){
+		if (result.is_error()){
 			panic(PanicCodes::AssertionFailure);
 		}
 		
-		uintptr_t physical_address = *result.value & 0xfffff000;
+		uintptr_t physical_address = *result.get_value() & 0xfffff000;
 		page_alloc.ref_release(physical_address);
-		*result.value = 0x00000004;
+		*result.get_value() = 0x00000004;
 	}
-	return ErrorResult::success();
+	return ErrorResult<PageTableErrors>::success();
 }
 
 //virtual_address is section-aligned
-ErrorResult<PageTableErrors> PageTable::decommit_sections(uintptr_t virtual_address, uint32_t num_pages){
+ErrorResult<PageTableErrors> PageTable::decommit_sections(uintptr_t virtual_address, uint32_t num_sections){
 	MultiBlockState section_state = get_section_state(virtual_address, num_sections, false);
 	
 	if (!section_state.is_committed){
-		return ErrorResult::failure(PageTableErrors::SomeBlocksNotCommitted);
+		return ErrorResult<PageTableErrors>::failure(PageTableErrors::SomeBlocksNotCommitted);
 	}
 	
 	for (uint32_t i = 0; i < num_sections; i++){
 		auto result = get_section_descriptor(virtual_address + i * SECTION_SIZE, false);
 		
-		if (!result.is_success){
+		if (result.is_error()){
 			panic(PanicCodes::AssertionFailure);
 		}
 		
-		uintptr_t physical_address = *result.value & 0xfff00000;
+		uintptr_t physical_address = *result.get_value() & 0xfff00000;
 		page_alloc.ref_release(physical_address, SECTION_SIZE / PAGE_SIZE);
-		*result.value = 0x00000004;
+		*result.get_value() = 0x00000004;
 	}
-	return ErrorResult::success();
+	return ErrorResult<PageTableErrors>::success();
 }
 
 //not allowed to release sections
 //virtual_address is page-aligned
 ErrorResult<PageTableErrors> PageTable::release_pages(uintptr_t virtual_address, uint32_t num_pages){
-	ultiBlockState page_state = get_page_state(virtual_address, num_pages, false);
+	MultiBlockState page_state = get_page_state(virtual_address, num_pages, false);
 	
 	if (!page_state.is_reserved){
-		return ErrorResult::failure(PageTableErrors::SomeBlocksNotReserved);
+		return ErrorResult<PageTableErrors>::failure(PageTableErrors::SomeBlocksNotReserved);
 	}
 	
 	for (uint32_t i = 0; i < num_pages; i++){
 		auto result = get_page_descriptor(virtual_address + i * PAGE_SIZE);
 		
-		if (!result.is_success){
+		if (result.is_error()){
 			panic(PanicCodes::AssertionFailure);
 		}
 		
-		*result.value = 0x00000000;
+		*result.get_value() = 0x00000000;
 	}
-	return ErrorResult::success();
+	return ErrorResult<PageTableErrors>::success();
 }
 
 //allowed to release pages as well
 //virtual_address is section-aligned
-ErrorResult<PageTableErrors> PageTable::release_sections(uintptr_t virtual_address, uint32_t num_pages){
+ErrorResult<PageTableErrors> PageTable::release_sections(uintptr_t virtual_address, uint32_t num_sections){
 	MultiBlockState section_state = get_section_state(virtual_address, num_sections, true);
 	
 	if (!section_state.is_reserved){
-		return ErrorResult::failure(PageTableErrors::SomeBlocksNotReserved);
+		return ErrorResult<PageTableErrors>::failure(PageTableErrors::SomeBlocksNotReserved);
 	}
 	
 	for (uint32_t i = 0; i < num_sections; i++){
 		uintptr_t section_base = virtual_address + i * SECTION_SIZE;
 		auto result = get_section_descriptor(section_base, true);
 		
-		if (!result.is_success){
+		if (result.is_error()){
 			panic(PanicCodes::AssertionFailure);
 		}
 		
-		if ((*result.value & 0x3) == 0x1){
+		if ((*result.get_value() & 0x3) == 0x1){
 			//it's a second-level table
 			auto result2 = release_pages(section_base, SECTION_SIZE / PAGE_SIZE);
-			if (result2.is_error){
+			if (result2.is_error()){
 				return result2;
 			}
 		} else {
-			*result.value = 0x00000000;
+			*result.get_value() = 0x00000000;
 		}
 	}
-	return ErrorResult::success();
+	return ErrorResult<PageTableErrors>::success();
 }
 
-Result<uint32_t*> PageTable::get_page_descriptor(uintptr_t virtual_address) {
+Result<uint32_t*, PageTableErrors> PageTable::get_page_descriptor(uintptr_t virtual_address) {
 	uint32_t first_level_index = virtual_address >> 20;
 	
 	if (first_level_index >= first_level_num_entries) {
-		return Result<uint32_t*>::failure();
+		return Result<uint32_t*, PageTableErrors>::failure(PageTableErrors::OutOfBounds);
 	}
 	
 	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
@@ -1154,86 +1200,25 @@ Result<uint32_t*> PageTable::get_page_descriptor(uintptr_t virtual_address) {
 		uint32_t * second_level_table = get_second_level_table_address(first_level_entry & 0xfffffc00);
 		uint32_t second_level_index = (virtual_address >> 12) & 0xff;
 	
-		return Result<uint32_t*>::success(&second_level_table[second_level_index]);
+		return Result<uint32_t*, PageTableErrors>::success(&second_level_table[second_level_index]);
 	}
 	
-	return Result<uint32_t*>::failure();
+	return Result<uint32_t*, PageTableErrors>::failure(PageTableErrors::NotMappedAsPage);
 }
 
-Result<uint32_t*> PageTable::get_section_descriptor(uintptr_t virtual_address, bool allow_second_level) {
+Result<uint32_t*, PageTableErrors> PageTable::get_section_descriptor(uintptr_t virtual_address, bool allow_second_level) {
 	uint32_t first_level_index = virtual_address >> 20;
 	
 	if (first_level_index >= first_level_num_entries) {
-		return Result<uint32_t*>::failure();
+		return Result<uint32_t*, PageTableErrors>::failure(PageTableErrors::NotMappedAsPage);
 	}
 	
 	uint32_t & first_level_entry = get_first_level_table_address()[first_level_index];
 	
 	if ((first_level_entry & 0x3) == 1 && !allow_second_level) {
-		return Result<uint32_t*>::failure();
+		return Result<uint32_t*, PageTableErrors>::failure(PageTableErrors::NotMappedAsSection);
 	} else {
-		return Result<uint32_t*>::success(&first_level_entry);
-	}
-}
-
-UnitState get_state_from_descriptor(uint32_t descriptor){
-	if ((descriptor & 0x7) == 0){
-		return UnitState::Free;
-	} else if ((descriptor & 0x7) == 4){
-		return UnitState::Reserved;
-	} else {
-		return UnitState::Committed;
-	}
-}
-
-enum class AggregationTypes {
-	Unmapped,
-	Reserved,
-};
-
-void section_aggregation_display(
-	uintptr_t &aggregation_start,
-	uint32_t &aggregation_count,
-	AggregationTypes &aggregation_type)
-{
-	uart_puthex(aggregation_start);
-	uart_puts("\t");
-	uart_putdec(aggregation_count);
-	if (aggregation_type == AggregationTypes::Unmapped){
-		uart_puts(" unmapped sections\r\n");
-	} else {
-		uart_puts(" reserved sections\r\n");
-	}
-	aggregation_count = 0;
-}
-
-void page_aggregation_display(
-	uintptr_t &aggregation_start,
-	uint32_t &aggregation_count,
-	AggregationTypes &aggregation_type)
-{
-	uart_puts("\t");
-	uart_puthex(aggregation_start);
-	uart_puts("\t");
-	uart_putdec(aggregation_count);
-	if (aggregation_type == AggregationTypes::Unmapped){
-		uart_puts(" unmapped pages\r\n");
-	} else {
-		uart_puts(" reserved pages\r\n");
-	}
-	aggregation_count = 0;
-}
-
-uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularity) {
-	switch (granularity){
-		case AllocationGranularity::Page:
-			return bytes / PAGE_SIZE + ((bytes & (PAGE_SIZE-1)) ? 1 : 0);
-		case AllocationGranularity::Section:
-			return bytes / SECTION_SIZE + ((bytes & (SECTION_SIZE-1)) ? 1 : 0);
-		case AllocationGranularity::Supersection:
-			return bytes / SUPERSECTION_SIZE + ((bytes & (SUPERSECTION_SIZE-1)) ? 1 : 0);
-		default:
-			panic(PanicCodes::IncompatibleParameter);
+		return Result<uint32_t*, PageTableErrors>::success(&first_level_entry);
 	}
 }
 

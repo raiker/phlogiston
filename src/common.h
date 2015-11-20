@@ -14,30 +14,6 @@ struct MemRange {
 	uintptr_t start, size;
 };
 
-template<class T>
-class Result {
-protected:
-	Result() :
-		is_success(false)
-	{ }
-	
-	Result(T val) :
-		is_success(true), value(val)
-	{ }
-	
-public:
-	bool is_success;
-	T value;
-	
-	static Result success(T val) {
-		return Result(val);
-	}
-	
-	static Result failure() {
-		return Result();
-	}
-};
-
 template<class E>
 class ErrorResult {
 protected:
@@ -68,15 +44,15 @@ public:
 	static ErrorResult failure(E err) {
 		return ErrorResult(err);
 	}
-}
+};
 
 template<class T, class E>
 class Result {
 protected:
 	bool m_is_error;
 	union {
-		T m_value,
-		E m_error
+		T m_value;
+		E m_error;
 	};
 	
 	Result(E err) :

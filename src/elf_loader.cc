@@ -88,7 +88,7 @@ bool load_elf(void * elf_header, PageTable & pagetable, void ** entry_address) {
 			
 			auto allocation = pagetable.reserve_allocate(seg_header.p_vaddr, npages, AllocationGranularity::Page);
 			
-			if (!allocation.is_success){
+			if (allocation.is_error()){
 				return false;
 			}
 		}

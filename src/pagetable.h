@@ -22,7 +22,6 @@ const uint32_t SUPERVISOR_DOMAIN = 0;
 enum class AllocationGranularity {
 	Page,
 	Section,
-	Supersection
 };
 
 enum class BlockState {
@@ -34,7 +33,19 @@ enum class BlockState {
 struct MultiBlockState {
 	bool is_free : 1, is_reserved : 1, is_committed : 1;
 	
-	MultiBlockState :
+	MultiBlockState(bool _is_free, bool _is_reserved, bool _is_committed) :
+		is_free(_is_free),
+		is_reserved(_is_reserved),
+		is_committed(_is_committed)
+	{ }
+	
+	MultiBlockState(const BlockState & bs){
+		is_free = (bs == BlockState::Free);
+		is_reserved = (bs == BlockState::Reserved);
+		is_committed = (bs == BlockState::Committed);
+	}
+	
+	MultiBlockState() :
 		is_free(true),
 		is_reserved(true),
 		is_committed(true)
@@ -48,8 +59,16 @@ struct MultiBlockState {
 		return *this;
 	}
 	
+	/*MultiBlockState & operator &=(const BlockState &rhs){
+		this->is_free &= (rhs == BlockState::Free);
+		this->is_reserved &= (rhs == BlockState::Reserved);
+		this->is_committed &= (rhs == BlockState::Committed);
+		
+		return *this;
+	}*/
+	
 	friend MultiBlockState operator &(MultiBlockState lhs, const MultiBlockState &rhs){
-		lhs += rhs;
+		lhs &= rhs;
 		return lhs;
 	}
 };
@@ -58,6 +77,12 @@ enum class PageTableErrors {
 	SomeBlocksNotFree,
 	SomeBlocksNotReserved,
 	SomeBlocksNotCommitted,
+	OutOfBounds,
+	AddressNotMapped,
+	InconsistentSupersection, //deprecated
+	MemorySpaceExhausted,
+	NotMappedAsPage,
+	NotMappedAsSection,
 };
 
 uint32_t get_num_allocation_units(size_t bytes, AllocationGranularity granularity);
@@ -77,8 +102,8 @@ private:
 	
 	PageAlloc &page_alloc;
 
-	Result<uintptr_t> virtual_to_physical_internal(uintptr_t virtual_address);
-	Result<uintptr_t> physical_to_virtual_internal(uintptr_t physical_address);
+	Result<uintptr_t, PageTableErrors> virtual_to_physical_internal(uintptr_t virtual_address);
+	Result<uintptr_t, PageTableErrors> physical_to_virtual_internal(uintptr_t physical_address);
 	
 	uint32_t * create_second_level_table();
 	
@@ -91,52 +116,52 @@ private:
 	MultiBlockState get_page_state_inside_section(uintptr_t virtual_address, uint32_t num_pages, bool allow_breaking_sections);
 	MultiBlockState get_section_state(uintptr_t virtual_address, uint32_t num_sections, bool allow_combining_pages);
 	
-	Result<uintptr_t> reserve_pages(uint32_t num_pages);
-	Result<uintptr_t> reserve_sections(uint32_t num_sections);
-	Result<uintptr_t> reserve_supersections(uint32_t num_supersections);
+	Result<uintptr_t, PageTableErrors> reserve_pages(uint32_t num_pages);
+	Result<uintptr_t, PageTableErrors> reserve_sections(uint32_t num_sections);
+	//Result<uintptr_t, PageTableErrors> reserve_supersections(uint32_t num_supersections);
 
-	Result<uintptr_t> reserve_pages(uintptr_t base, uint32_t num_pages);
-	Result<uintptr_t> reserve_sections(uintptr_t base, uint32_t num_sections);
-	Result<uintptr_t> reserve_supersections(uintptr_t base, uint32_t num_supersections);
+	Result<uintptr_t, PageTableErrors> reserve_pages(uintptr_t base, uint32_t num_pages);
+	Result<uintptr_t, PageTableErrors> reserve_sections(uintptr_t base, uint32_t num_sections);
+	//Result<uintptr_t, PageTableErrors> reserve_supersections(uintptr_t base, uint32_t num_supersections);
 	
 	bool check_section_partially_reservable(uintptr_t base, uint32_t num_pages);
 	void reserve_pages_from_section(uintptr_t base, uint32_t num_pages);
 	
-	bool commit_page(uintptr_t virtual_address, uintptr_t physical_address);
-	bool commit_section(uintptr_t virtual_address, uintptr_t physical_address);
-	bool commit_supersection(uintptr_t virtual_address, uintptr_t physical_address);
+	ErrorResult<PageTableErrors> commit_page(uintptr_t virtual_address, uintptr_t physical_address);
+	ErrorResult<PageTableErrors> commit_section(uintptr_t virtual_address, uintptr_t physical_address);
+	//ErrorResult<PageTableErrors> commit_supersection(uintptr_t virtual_address, uintptr_t physical_address);
 	
 	ErrorResult<PageTableErrors> decommit_pages(uintptr_t virtual_address, uint32_t num_pages);
-	ErrorResult<PageTableErrors> decommit_sections(uintptr_t virtual_address, uint32_t num_pages);
+	ErrorResult<PageTableErrors> decommit_sections(uintptr_t virtual_address, uint32_t num_sections);
 	
 	ErrorResult<PageTableErrors> release_pages(uintptr_t virtual_address, uint32_t num_pages);
-	ErrorResult<PageTableErrors> release_sections(uintptr_t virtual_address, uint32_t num_pages);
+	ErrorResult<PageTableErrors> release_sections(uintptr_t virtual_address, uint32_t num_sections);
 	
-	Result<uint32_t*> get_page_descriptor(uintptr_t virtual_address);
-	Result<uint32_t*> get_section_descriptor(uintptr_t virtual_address, bool allow_second_level);
+	Result<uint32_t*, PageTableErrors> get_page_descriptor(uintptr_t virtual_address);
+	Result<uint32_t*, PageTableErrors> get_section_descriptor(uintptr_t virtual_address, bool allow_second_level);
 public:
 	PageTable(PageAlloc &_page_alloc, bool is_supervisor, bool is_reference_counted = true);
 	PageTable(const PageTable &other) = delete; //we don't want this to be copy-constructed
 	~PageTable();
 	
-	Result<uintptr_t> reserve(uint32_t units, AllocationGranularity granularity);
-	Result<uintptr_t> reserve(uintptr_t address, uint32_t units, AllocationGranularity granularity);
+	Result<uintptr_t, PageTableErrors> reserve(uint32_t units, AllocationGranularity granularity);
+	Result<uintptr_t, PageTableErrors> reserve(uintptr_t address, uint32_t units, AllocationGranularity granularity);
 	
-	Result<uintptr_t> reserve_allocate(uint32_t units, AllocationGranularity granularity);
-	Result<uintptr_t> reserve_allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
+	Result<uintptr_t, PageTableErrors> reserve_allocate(uint32_t units, AllocationGranularity granularity);
+	Result<uintptr_t, PageTableErrors> reserve_allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
 	
-	bool allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
+	ErrorResult<PageTableErrors> allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
 	
-	bool map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity);
+	ErrorResult<PageTableErrors> map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity);
 	
 	ErrorResult<PageTableErrors> deallocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
 	
 	ErrorResult<PageTableErrors> release(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity);
 
-	Result<UnitState> get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity);
+	Result<BlockState, PageTableErrors> get_block_state(uintptr_t virtual_address, AllocationGranularity granularity);
 	
-	Result<uintptr_t> virtual_to_physical(uintptr_t virtual_address);
-	Result<uintptr_t> physical_to_virtual(uintptr_t physical_address);
+	Result<uintptr_t, PageTableErrors> virtual_to_physical(uintptr_t virtual_address);
+	Result<uintptr_t, PageTableErrors> physical_to_virtual(uintptr_t physical_address);
 	
 	void print_table_info();
 };
