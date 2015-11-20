@@ -1068,7 +1068,7 @@ ErrorResult<PageTableErrors> PageTable::decommit_pages(uintptr_t virtual_address
 	return ErrorResult::success();
 }
 
-//virtual_address is section_aligned
+//virtual_address is section-aligned
 ErrorResult<PageTableErrors> PageTable::decommit_sections(uintptr_t virtual_address, uint32_t num_pages){
 	MultiBlockState section_state = get_section_state(virtual_address, num_sections, false);
 	
@@ -1077,7 +1077,7 @@ ErrorResult<PageTableErrors> PageTable::decommit_sections(uintptr_t virtual_addr
 	}
 	
 	for (uint32_t i = 0; i < num_sections; i++){
-		auto result = get_section_descriptor(virtual_address + i * SECTION_SIZE);
+		auto result = get_section_descriptor(virtual_address + i * SECTION_SIZE, false);
 		
 		if (!result.is_success){
 			panic(PanicCodes::AssertionFailure);
@@ -1090,8 +1090,56 @@ ErrorResult<PageTableErrors> PageTable::decommit_sections(uintptr_t virtual_addr
 	return ErrorResult::success();
 }
 
-ErrorResult<PageTableErrors> PageTable::release_pages(uintptr_t virtual_address, uint32_t num_pages);
-ErrorResult<PageTableErrors> PageTable::release_sections(uintptr_t virtual_address, uint32_t num_pages);
+//not allowed to release sections
+//virtual_address is page-aligned
+ErrorResult<PageTableErrors> PageTable::release_pages(uintptr_t virtual_address, uint32_t num_pages){
+	ultiBlockState page_state = get_page_state(virtual_address, num_pages, false);
+	
+	if (!page_state.is_reserved){
+		return ErrorResult::failure(PageTableErrors::SomeBlocksNotReserved);
+	}
+	
+	for (uint32_t i = 0; i < num_pages; i++){
+		auto result = get_page_descriptor(virtual_address + i * PAGE_SIZE);
+		
+		if (!result.is_success){
+			panic(PanicCodes::AssertionFailure);
+		}
+		
+		*result.value = 0x00000000;
+	}
+	return ErrorResult::success();
+}
+
+//allowed to release pages as well
+//virtual_address is section-aligned
+ErrorResult<PageTableErrors> PageTable::release_sections(uintptr_t virtual_address, uint32_t num_pages){
+	MultiBlockState section_state = get_section_state(virtual_address, num_sections, true);
+	
+	if (!section_state.is_reserved){
+		return ErrorResult::failure(PageTableErrors::SomeBlocksNotReserved);
+	}
+	
+	for (uint32_t i = 0; i < num_sections; i++){
+		uintptr_t section_base = virtual_address + i * SECTION_SIZE;
+		auto result = get_section_descriptor(section_base, true);
+		
+		if (!result.is_success){
+			panic(PanicCodes::AssertionFailure);
+		}
+		
+		if ((*result.value & 0x3) == 0x1){
+			//it's a second-level table
+			auto result2 = release_pages(section_base, SECTION_SIZE / PAGE_SIZE);
+			if (result2.is_error){
+				return result2;
+			}
+		} else {
+			*result.value = 0x00000000;
+		}
+	}
+	return ErrorResult::success();
+}
 
 Result<uint32_t*> PageTable::get_page_descriptor(uintptr_t virtual_address) {
 	uint32_t first_level_index = virtual_address >> 20;
