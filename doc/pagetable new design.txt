@@ -1,0 +1,53 @@
+***Functions***
+Reserve Pages Specific
+	Check all pages free
+	Mark pages as reserved
+
+Reserve Pages
+	Find n contiguous free pages
+	Mark pages as reserved
+
+Reserve Sections Specific
+	Check all sections free
+	Mark sections as reserved
+
+Reserve Sections
+	Find n contiguous free sections
+	Mark sections as reserved
+
+Allocate Pages
+	Check all pages reserved
+	Allocate one page to each
+
+Allocate Sections
+	Check all sections reserved
+	Allocate one section to each
+
+Map Pages
+	Check all pages reserved
+	Map each page
+
+Map Sections
+	Check all sections reserved
+	Map each section
+
+Deallocate Pages
+	Check all pages committed (mapped or allocated)
+	Decrement reference counts
+	Mark pages as reserved
+
+Deallocate Sections
+	Check all sections committed (mapped or allocated)
+	Decrement reference counts
+	Mark sections as reserved
+
+Release Pages
+	Check all pages reserved
+	Mark pages as free
+
+Release Sections
+	Check all sections reserved
+	Mark sections as free
+
+
+***Internal Operations***

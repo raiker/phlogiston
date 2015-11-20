@@ -157,7 +157,6 @@ Result<uintptr_t> PageTable::reserve_allocate(uintptr_t address, uint32_t units,
 	return reservation;
 }
 
-//TODO: handle partial failure
 bool PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
 #ifdef VERBOSE
 	uart_puts("PageTable::allocate(virtual_address=");
@@ -200,10 +199,10 @@ bool PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGr
 		
 		if (!success){
 			uart_puts("failure\r\n");
-		}
-		
-		if (!success) {
 			page_alloc.ref_release(physical_address, get_allocation_pages(granularity)); //free the allocated memory
+			
+			//clean up previously-allocated pages
+			decommit(virtual_address, i, granularity);
 			return false;
 		}
 	}
@@ -211,7 +210,6 @@ bool PageTable::allocate(uintptr_t virtual_address, uint32_t units, AllocationGr
 	return true;
 }
 
-//TODO: cleanup on partial failure
 bool PageTable::map(uintptr_t virtual_address, uintptr_t physical_address, uint32_t units, AllocationGranularity granularity) {
 	auto lock = spinlock_cs.acquire();
 	
@@ -235,24 +233,51 @@ bool PageTable::map(uintptr_t virtual_address, uintptr_t physical_address, uint3
 				panic(PanicCodes::IncompatibleParameter);
 		}
 		
-		if (!success) return false;
-	}
-	
-	if (reference_counted){
-		//bump reference counts
-		page_alloc.ref_acquire(physical_address, units * get_allocation_pages(granularity));
+		if (!success) {
+			//clean up previously-mapped pages
+			decommit(virtual_address, i, granularity);
+			return false;
+		}
+		
+		if (reference_counted){
+			//bump reference counts
+			page_alloc.ref_acquire(physical_address + offset, get_allocation_pages(granularity));
+		}
 	}
 	
 	return true;
 }
 
-bool PageTable::deallocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
+//follows redesign
+ErrorResult<PageTableErrors> PageTable::deallocate(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
 	auto lock = spinlock_cs.acquire();
+	
+	switch (granularity){
+		case AllocationGranularity::Page:
+			virtual_address &= 0xfffff000;
+			return decommit_pages(virtual_address, units);
+		case AllocationGranularity::Section:
+			virtual_address &= 0xfff00000;
+			return decommit_sections(virtual_address, units);
+		default:
+			panic(PanicCodes::IncompatibleParameter);
+	}
 }
 
-bool PageTable::release(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
+//follows redesign
+ErrorResult<PageTableErrors> PageTable::release(uintptr_t virtual_address, uint32_t units, AllocationGranularity granularity){
 	auto lock = spinlock_cs.acquire();
-}
+	
+	switch (granularity){
+		case AllocationGranularity::Page:
+			virtual_address &= 0xfffff000;
+			return release_pages(virtual_address, units);
+		case AllocationGranularity::Section:
+			virtual_address &= 0xfff00000;
+			return release_sections(virtual_address, units);
+		default:
+			panic(PanicCodes::IncompatibleParameter);
+	}}
 
 Result<UnitState> PageTable::get_unit_state(uintptr_t virtual_address, AllocationGranularity granularity) {
 	auto lock = spinlock_cs.acquire();
@@ -616,6 +641,107 @@ void PageTable::print_second_level_table_info(uint32_t * table, uintptr_t base) 
 	}
 }
 
+//returns the set of properties displayed by all of the pages in the range
+//if allow_breaking_sections is false, recursing into a section returns all false
+//virtual_address must be page-aligned
+MultiBlockState PageTable::get_page_state(uintptr_t virtual_address, uint32_t num_pages, bool allow_breaking_sections) {
+	MultiBlockState retval;
+	
+	uint32_t num_unchecked_pages = num_pages;
+	uintptr_t check_base = base;
+	
+	while (num_unchecked_pages > 0){
+		uint32_t pages_in_rest_of_section = ((check_base & 0xfff00000) - check_base + SECTION_SIZE) / PAGE_SIZE;
+		uint32_t pages_to_check = std::min(num_unchecked_pages, pages_in_rest_of_section);
+		
+		retval &= get_page_state_inside_section(check_base, pages_to_check, allow_breaking_sections);
+		
+		num_unchecked_pages -= pages_to_check;
+		check_base = (check_base & 0xfff00000) + SECTION_SIZE;
+	}
+	
+	return retval;
+}
+
+//as above, but all pages are in the same section
+//virtual_address must be page-aligned
+MultiBlockState PageTable::get_page_state_inside_section(uintptr_t virtual_address, uint32_t num_pages, bool allow_breaking_sections) {
+	auto result = get_section_descriptor(virtual_address, true);
+	
+	if (!result.is_success) return MultiBlockState {false, false, false};
+	
+	if ((*result.value & 0x3) == 1) {
+		//second-level page table
+		MultiBlockState retval;
+		for (uint32_t i = 0; i < num_pages; i++){
+			result = get_page_descriptor(virtual_address + i * PAGE_SIZE);
+			
+			if (!result.is_success) {
+				retval &= MultiBlockState {false, false, false};
+			}
+			
+			if ((*result.value & 0x7) == 0) {
+				retval &= MultiBlockState {true, false, false};
+			} else if ((*result.value * 0x7 = 0x4){
+				retval &= MultiBlockState {false, true, false};
+			} else {
+				retval &= MultiBlockState {false, false, true};
+			}
+		}
+		return retval;
+	} else {
+		//it's a fully-mapped section
+		if (allow_breaking_sections){
+			if ((*result.value & 0x7) == 0){
+				//free section
+				return MultiBlockState {true, false, false};
+			} else if ((*result.value & 0x7) == 0x4){
+				//section is reserved
+				return MultiBlockState {false, true, false};
+			} else {
+				//section is mapped
+				return MultiBlockState {false, false, true};
+			}
+		} else {
+			return MultiBlockState {false, false, false};
+		}
+	}
+}
+
+//returns the set of properties displayed by all of the sections in the range
+//if allow_combining_pages is false, recursing into a second-level table returns all false
+//virtual_address must be section-aligned
+MultiBlockState PageTable::get_section_state(uintptr_t virtual_address, uint32_t num_sections, bool allow_combining_pages) {
+	MultiBlockState retval;
+	
+	for (uint32_t i = 0; i < num_sections; i++){
+		auto result = get_section_descriptor(virtual_address + i * SECTION_SIZE, allow_combining_pages);
+		
+		if (!result.is_success) return MultiBlockState {false, false, false};
+		
+		if ((*result.value & 0x3) == 1) {
+			//second-level page table
+			retval &= get_page_state_inside_section(virtual_address + i * SECTION_SIZE, SECTION_SIZE / PAGE_SIZE, true);
+		} else {
+			//it's a fully-mapped section
+			if (allow_breaking_sections){
+				if ((*result.value & 0x7) == 0){
+					//free section
+					retval &= MultiBlockState {true, false, false};
+				} else if ((*result.value & 0x7) == 0x4){
+					//section is reserved
+					retval &= MultiBlockState {false, true, false};
+				} else {
+					//section is mapped
+					retval &= MultiBlockState {false, false, true};
+				}
+			} else {
+				return MultiBlockState {false, false, false};
+			}
+		}
+	}
+}
+
 Result<uintptr_t> PageTable::reserve_pages(uint32_t num_pages){
 	uint32_t * first_level_table = get_first_level_table_address();
 	
@@ -919,6 +1045,14 @@ bool PageTable::commit_supersection(uintptr_t virtual_address, uintptr_t physica
 	}
 	return false;
 }
+
+ErrorResult<PageTableErrors> PageTable::decommit_pages(uintptr_t virtual_address, uint32_t num_pages) {
+	
+}
+ErrorResult<PageTableErrors> PageTable::decommit_sections(uintptr_t virtual_address, uint32_t num_pages);
+
+ErrorResult<PageTableErrors> PageTable::release_pages(uintptr_t virtual_address, uint32_t num_pages);
+ErrorResult<PageTableErrors> PageTable::release_sections(uintptr_t virtual_address, uint32_t num_pages);
 
 Result<uint32_t*> PageTable::get_page_descriptor(uintptr_t virtual_address) {
 	uint32_t first_level_index = virtual_address >> 20;

@@ -38,4 +38,79 @@ public:
 	}
 };
 
+template<class E>
+class ErrorResult {
+protected:
+	bool m_is_error;
+	E m_error;
+	
+	ErrorResult() :
+		m_is_error(false)
+	{ }
+	
+	ErrorResult(E err) :
+		m_is_error(true),
+		m_error(err)
+	{ }
+public:
+	bool is_error(){
+		return m_is_error;
+	}
+	
+	E & get_error(){
+		return m_error;
+	}
+	
+	static ErrorResult success() {
+		return ErrorResult();
+	}
+	
+	static ErrorResult failure(E err) {
+		return ErrorResult(err);
+	}
+}
+
+template<class T, class E>
+class Result {
+protected:
+	bool m_is_error;
+	union {
+		T m_value,
+		E m_error
+	};
+	
+	Result(E err) :
+		m_is_error(true),
+		m_error(err)
+	{ }
+	
+	Result(T val) :
+		m_is_error(false),
+		m_value(val)
+	{ }
+	
+public:
+	bool is_success(){
+		return !m_is_error;
+	}
+	
+	bool is_error(){
+		return m_is_error;
+	}
+	
+	T & get_value(){
+		return m_value;
+	}
+	
+	E & get_error(){
+		return m_error;
+	}
+	static Result success(T val) {
+		return Result(val);
+	}
+	
+	static Result failure(E err) {
+		return Result(err);
+	}
+};
 
