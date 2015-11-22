@@ -27,9 +27,9 @@ class Process {
 	KVector<Thread> threads;
 	
 public:
-	Process(PageAlloc &page_alloc) :
+	Process(PageAlloc &page_alloc, PageTable &supervisor_table) :
 		page_table(page_alloc, false),
-		threads(page_table)
+		threads(supervisor_table)
 	{}
 	
 	bool create_thread(uintptr_t entry_point);

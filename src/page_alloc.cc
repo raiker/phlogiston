@@ -57,11 +57,6 @@ uintptr_t PageAlloc::alloc(uint32_t size) {
 	//enter critical section
 	auto lock = spinlock_cs.acquire();
 	
-	static uint32_t next_alloc_1 = 0; //page
-	static uint32_t next_alloc_4 = 0; //pagetable
-	static uint32_t next_alloc_256 = 0; //section
-	static uint32_t next_alloc_4096 = 0; //supersection
-	
 	uint32_t &next_alloc = (size == 1) ? next_alloc_1 : (size == 4) ? next_alloc_4 : (size == 256) ? next_alloc_256 : next_alloc_4096;
 	
 	uint32_t entry = next_alloc;

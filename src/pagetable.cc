@@ -97,9 +97,11 @@ PageTable::PageTable(PageAlloc &_page_alloc, bool is_supervisor, bool is_referen
 	
 	if (is_supervisor){
 		//supervisor (4k entries)
+		first_level_start_entry = FIRST_LEVEL_USER_ENTRIES;
 		first_level_num_entries = FIRST_LEVEL_SUPERVISOR_ENTRIES;
 	} else {
 		//user (2k entries)
+		first_level_start_entry = 0;
 		first_level_num_entries = FIRST_LEVEL_USER_ENTRIES;
 	}
 	
@@ -792,7 +794,7 @@ Result<uintptr_t, PageTableErrors> PageTable::reserve_pages(uint32_t num_pages){
 	uint32_t * first_level_table = get_first_level_table_address();
 	
 	//trawl through all the second-level page tables looking for a space
-	for (uint32_t i = 0; i < first_level_num_entries; i++){
+	for (uint32_t i = first_level_start_entry; i < first_level_num_entries; i++){
 		uint32_t contiguous_free_pages = 0;
 		
 		uint32_t & first_level_entry = first_level_table[i];
@@ -826,7 +828,7 @@ Result<uintptr_t, PageTableErrors> PageTable::reserve_pages(uint32_t num_pages){
 	
 	//if we get here, there were no free pages
 	//create a new second-level table
-	for (uint32_t i = 0; i < first_level_num_entries; i++){
+	for (uint32_t i = first_level_start_entry; i < first_level_num_entries; i++){
 		uint32_t & first_level_entry = first_level_table[i];
 		if ((first_level_entry & 0x7) == 0x0){
 			//it's an unreserved free section
@@ -852,7 +854,7 @@ Result<uintptr_t, PageTableErrors> PageTable::reserve_sections(uint32_t num_sect
 	
 	uint32_t contiguous_free_sections = 0;
 	
-	for (uint32_t i = 0; i < first_level_num_entries; i++){
+	for (uint32_t i = first_level_start_entry; i < first_level_num_entries; i++){
 		uint32_t & first_level_entry = first_level_table[i];
 		if ((first_level_entry & 0x7) == 0x0){
 			//it's an unreserved free section

@@ -96,6 +96,7 @@ private:
 	friend class PagingManager;
 	
 	uint32_t * first_level_table;
+	uint32_t first_level_start_entry; //0 for a user table, 2048 for a supervisor
 	uint32_t first_level_num_entries; //should be 4096 or 2048
 	bool reference_counted;
 	Spinlock spinlock_cs;
