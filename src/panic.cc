@@ -41,6 +41,9 @@ void panic(PanicCodes code){
 		case PanicCodes::AllocationInNonReferenceCountedTable:
 			msg = "Allocation in non-reference-counted page table";
 			break;
+		case PanicCodes::ArrayIndexOutOfBounds:
+			msg = "Array index out of bounds";
+			break;
 		default:
 			msg = "Unknown error";
 			break;

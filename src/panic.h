@@ -14,6 +14,7 @@ enum PanicCodes {
 	AssertionFailure,
 	PureVirtualFunctionCall,
 	AllocationInNonReferenceCountedTable,
+	ArrayIndexOutOfBounds,
 };
 
 void panic(PanicCodes code) __attribute__((noreturn));
