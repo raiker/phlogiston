@@ -1,5 +1,5 @@
 ASMFLAGS="-mcpu=arm1176jzf-s -fpic -ffreestanding"
-CXXFLAGS="-fno-exceptions -fno-unwind-tables -fno-rtti -g -std=c++17 -Wall -Wextra" #-O3
+CXXFLAGS="-fno-exceptions -fno-unwind-tables -fno-rtti -g -std=c++17 -Wall -Wextra -O3 "
 
 rm build/*.o
 rm phlogiston.bin
@@ -19,8 +19,10 @@ arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c spinlock.cc -o build/spinlock.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c pagetable.cc -o build/pagetable.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c pagetable_tests.cc -o build/pagetable_tests.o
 arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c process.cc -o build/process.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c sys_timer.cc -o build/sys_timer.o
+arm-none-eabi-g++ $ASMFLAGS $CXXFLAGS -c kernel_interrupt_handlers.cc -o build/kernel_interrupt_handlers.o
 
-arm-none-eabi-g++ -g -T phlogiston_link.ld -o kernel.elf -flto -fpic -ffreestanding -O2 build/utility.o build/mmio.o build/uart.o build/panic.o build/pagetable.o build/spinlock.o build/page_alloc.o build/process.o build/kernel_entry.o -nostdlib -lgcc
+arm-none-eabi-g++ -g -T phlogiston_link.ld -o kernel.elf -flto -fpic -ffreestanding -O2 build/utility.o build/mmio.o build/uart.o build/panic.o build/pagetable.o build/spinlock.o build/page_alloc.o build/process.o build/sys_timer.o build/kernel_interrupt_handlers.o build/interrupts.o build/kernel_entry.o -nostdlib -lgcc
 
 arm-none-eabi-objcopy --only-keep-debug kernel.elf kernel.sym
 arm-none-eabi-objcopy -S kernel.elf kernel-stripped.elf

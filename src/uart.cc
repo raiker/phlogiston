@@ -5,10 +5,7 @@
 
 enum
 {
-    // The GPIO registers base address.
-    GPIO_BASE = 0x20200000,
- 
-    // The offsets for reach register.
+    // The offsets for each register.
  
     // Controls actuation of pull up/down to ALL GPIO pins.
     GPPUD = (GPIO_BASE + 0x94),

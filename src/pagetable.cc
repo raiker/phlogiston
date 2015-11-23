@@ -434,9 +434,9 @@ Result<uintptr_t, PageTableErrors> PageTable::physical_to_virtual(uintptr_t phys
 void PageTable::print_table_info() {
 	auto lock = spinlock_cs.acquire();
 	
-	uintptr_t aggregation_start;
+	uintptr_t aggregation_start = 0;
 	uint32_t aggregation_count = 0;
-	AggregationTypes aggregation_type;
+	AggregationTypes aggregation_type = AggregationTypes::Reserved;
 	
 	for (uint32_t i = 0; i < first_level_num_entries; i++){
 		uint32_t &first_level_entry = get_first_level_table_address()[i];
@@ -656,9 +656,9 @@ uint32_t * PageTable::get_second_level_table_address(uintptr_t physical_base_add
 }
 
 void PageTable::print_second_level_table_info(uint32_t * table, uintptr_t base) {
-	uintptr_t aggregation_start;
+	uintptr_t aggregation_start = 0;
 	uint32_t aggregation_count = 0;
-	AggregationTypes aggregation_type;
+	AggregationTypes aggregation_type = AggregationTypes::Reserved;
 	
 	for (uint32_t i = 0; i < SECOND_LEVEL_ENTRIES; i++){
 		uint32_t &second_level_entry = table[i];
