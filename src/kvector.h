@@ -94,13 +94,11 @@ public:
 			panic(PanicCodes::AssertionFailure);
 		}
 		
+		data = (T*)reservation.get_value();
 		used_pages = 0;
-		
-		allocate_another_page();
-		
 		used_elements = 0;
 		
-		data = (T*)reservation.get_value();
+		allocate_another_page();
 	}
 	
 	~KVector() {

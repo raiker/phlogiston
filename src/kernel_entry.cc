@@ -11,8 +11,6 @@ void kernel_entry(PageTable *identity_overlay, PageTable *supervisor_pagetable, 
 	
 	Process p(*page_alloc, *supervisor_pagetable);
 	
-	panic(PanicCodes::AssertionFailure);
-	
 	p.create_thread(0x00010000);
 	
 	panic(PanicCodes::AssertionFailure);
