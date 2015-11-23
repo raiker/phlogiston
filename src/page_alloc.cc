@@ -177,3 +177,11 @@ void PageAlloc::ref_release(uintptr_t page, uint32_t size){
 	}
 }
 
+//release the pages automatically reserved to accommodate the loader
+//must be called EXACTLY ONCE, after the kernel is loaded
+void PageAlloc::release_loader(){
+	uint32_t pages_to_release = ((uintptr_t)refcount_table) / PAGE_SIZE;
+	
+	ref_release(0, pages_to_release);
+}
+

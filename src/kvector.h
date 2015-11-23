@@ -98,7 +98,7 @@ public:
 		used_pages = 0;
 		used_elements = 0;
 		
-		allocate_another_page();
+		//allocate_another_page();
 	}
 	
 	~KVector() {
@@ -124,7 +124,7 @@ public:
 	
 	template<typename... _Args>
 	void emplace_back(_Args&&... __args){
-		if (used_elements == max_elements){
+		while (used_elements == max_elements){
 			allocate_another_page();
 		}
 		

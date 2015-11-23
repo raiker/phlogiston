@@ -31,5 +31,8 @@ public:
 	void ref_acquire(uintptr_t page, uint32_t size);
 	void ref_release(uintptr_t page, uint32_t size);
 	MemStats get_mem_stats();
+	
+	//special single-use method
+	void release_loader();
 };
 
