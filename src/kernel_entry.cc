@@ -59,37 +59,5 @@ void kernel_init(){
 	//enable timer interrupts
 	timer::init_timer_interrupt();
 	
-	uint32_t IRQ_BASIC_PENDING = MMIO_BASE + 0xb000 + 0x200;
-	uint32_t IRQ_PENDING_1 = MMIO_BASE + 0xb000 + 0x204;
-	uint32_t IRQ_ENABLE_1 = MMIO_BASE + 0xb000 + 0x210;
-	uint32_t TIMER_CS = MMIO_BASE + 0x3000 + 0x0;
-	
-	//mmio_write(IRQ_ENABLE_1, 0x00000001);
-	
-	while (true){
-		/*uint32_t basic_pending = mmio_read(IRQ_BASIC_PENDING);
-		
-		if (basic_pending){
-			uart_puts("Basic pending: ");
-			uart_puthex(basic_pending);
-			uart_putline();
-		}
-		
-		uint32_t pending_1 = mmio_read(IRQ_PENDING_1);
-		
-		if (pending_1){
-			uart_puts("Pending 1: ");
-			uart_puthex(pending_1);
-			uart_putline();
-		}*/
-		
-		/*uint32_t timer_cs = mmio_read(TIMER_CS);
-		
-		if (timer_cs){
-			uart_puthex(timer_cs);
-			uart_putline();
-		}*/
-	}
-	
 	panic(PanicCodes::AssertionFailure);
 }
