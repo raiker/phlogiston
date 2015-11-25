@@ -1,5 +1,5 @@
 ASMFLAGS="-mcpu=arm1176jzf-s -fpic -ffreestanding"
-CXXFLAGS="-fno-exceptions -fno-unwind-tables -fno-rtti -g -std=c++17 -Wall -Wextra -O3 "
+CXXFLAGS="-fno-exceptions -fno-unwind-tables -fno-rtti -fno-delete-null-pointer-checks -g -std=c++17 -Wall -Wextra -Wpedantic -Og "
 
 rm build/*.o
 rm phlogiston.bin
