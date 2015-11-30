@@ -9,7 +9,7 @@ class Scheduler {
 private:
 	struct ThreadState {
 		Thread *thread;
-		std::atomic<bool> is_blocked;
+		bool is_blocked;
 	};
 	
 	KRollingQueue<*Thread> threads;

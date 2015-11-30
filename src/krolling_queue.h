@@ -14,7 +14,7 @@ public:
 		read_head(0)
 	{ }
 	
-	const T & next() {
+	T & next() {
 		if (store.size() == 0){
 			panic(PanicCodes::ArrayIndexOutOfBounds);
 		}
@@ -29,5 +29,9 @@ public:
 	void add(_Args&&... __args){
 		store.emplace(read_head, std::forward<_Args>(__args)...);
 		used_elements++;
+	}
+	
+	const size_t size() const {
+		return store.size();
 	}
 };
