@@ -132,6 +132,23 @@ public:
 		used_elements++;
 	}
 	
+	template<typename... _Args>
+	void emplace(size_t idx, _Args&&... __args){
+		if (idx > used_elements){
+			panic(PanicCodes::ArrayIndexOutOfBounds);
+		}
+		
+		while (used_elements == max_elements){
+			allocate_another_page();
+		}
+		
+		//make space for incoming value
+		memcpy((uintptr_t)&data[idx+1], (uintptr_t)&data[idx], (used_elements - idx) * sizeof(T));
+		
+		::new((void *)&data[idx]) T(std::forward<_Args>(__args)...);
+		used_elements++;
+	}
+	
 	T& operator [](size_t idx) {
 		if (idx >= used_elements){
 			panic(PanicCodes::ArrayIndexOutOfBounds);
@@ -144,6 +161,15 @@ public:
 			panic(PanicCodes::ArrayIndexOutOfBounds);
 		}
 		return data[idx];
+	}
+	
+	void erase(size_t idx) {
+		if (idx >= used_elements){
+			panic(PanicCodes::ArrayIndexOutOfBounds);
+		}
+		
+		memcpy((uintptr_t)&data[idx], (uintptr_t)&data[idx+1], (used_elements - idx - 1) * sizeof(T));
+		used_elements--;
 	}
 };
 
