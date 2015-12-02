@@ -44,10 +44,17 @@ data_abort_vec:
 	subs pc, lr, #8
 	
 irq_vec:
-	push {lr}
+	sub lr, lr, #4
+	//srsdb sp!, #0x13 //write lr and spsr to supervisor stack
+	push {lr,pc} //pc is dummy
+	mrs lr, spsr
+	str lr, [sp, #0x4]
+	
+	stmdb sp!, {r0-r14}^
+	mov r0, sp
 	bl irq_handler
-	pop {lr}
-	subs pc, lr, #4
+	ldmia sp!, {r0-r14}^
+	rfeia sp!
 	
 fiq_vec:
 	push {lr}

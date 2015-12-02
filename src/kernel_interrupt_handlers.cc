@@ -34,7 +34,7 @@ void data_abort_handler(uint32_t saved_pc){
 }
 
 extern "C"
-void irq_handler(){
+void irq_handler(uint32_t *saved_regs){
 	uart_puts("IRQ triggered\r\n");
 	
 	uint32_t IRQ_BASIC_PENDING = MMIO_BASE + 0xb000 + 0x200;
