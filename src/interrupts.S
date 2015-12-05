@@ -50,10 +50,10 @@ irq_vec:
 	mrs lr, spsr
 	str lr, [sp, #0x4]
 	
-	stmdb sp!, {r0-r14}^
+	stmdb sp!, {r0-r14}^ //not working properly for banked registers
 	mov r0, sp
 	bl irq_handler
-	ldmia sp!, {r0-r14}^
+	ldmia sp!, {r0-r14}^ //not working properly for banked registers
 	rfeia sp!
 	
 fiq_vec:
