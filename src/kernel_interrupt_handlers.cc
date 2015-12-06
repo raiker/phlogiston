@@ -37,7 +37,7 @@ extern "C"
 void irq_handler(uint32_t *saved_regs){
 	uart_puts("IRQ triggered\r\n");
 	
-	saved_regs[13] = 0xdeadbeef;
+	//saved_regs[13] = 0xdeadbeef;
 	
 	uint32_t IRQ_BASIC_PENDING = MMIO_BASE + 0xb000 + 0x200;
 	uint32_t IRQ_PENDING_1 = MMIO_BASE + 0xb000 + 0x204;
