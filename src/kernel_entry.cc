@@ -26,7 +26,7 @@ void kernel_entry(PageTable *identity_overlay, PageTable *supervisor_pagetable, 
 	//free the pages reserved for the loader
 	page_alloc->release_loader();
 	
-	//supervisor_pagetable->print_table_info();
+	supervisor_pagetable->print_table_info();
 	
 	//copy the resources from the loader into the kernel's address space
 	size_t global_block_size = sizeof(PageTable) * 2 + sizeof(PageAlloc);

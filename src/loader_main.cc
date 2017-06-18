@@ -8,10 +8,11 @@
 #include "elf_loader.h"
 #include "pagetable.h"
 #include "runtime_tests.h"
+#include "mmio.h"
 
 //#define RUN_TESTS
 
-extern uint32_t _binary_kernel_stripped_elf_start;
+extern uint32_t _binary_bin_kernel_stripped_elf_start;
 extern refcount_t __page_alloc_table_start;
 
 typedef void KernelEntryProc(PageTable*, PageTable*, PageAlloc*);
@@ -29,7 +30,9 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	atags::debug_atags(atags);
 	
-	MemRange system_memory = atags::get_mem_range(atags);
+	//MemRange system_memory = atags::get_mem_range(atags);
+
+	MemRange system_memory = {0x00000000, 0x2000000};
 	
 	if (system_memory.start != 0){
 		panic(PanicCodes::NonZeroBase);
@@ -121,13 +124,13 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	//map mmio
 	nsections = 16;
-	identity_reservation = identity_overlay.reserve(0x20000000, nsections, AllocationGranularity::Section);
+	identity_reservation = identity_overlay.reserve(MMIO_BASE, nsections, AllocationGranularity::Section);
 	if (identity_reservation.is_error()){
 		uart_puts("Failed to reserve identity memory\r\n");
 		panic(PanicCodes::AssertionFailure);
 	}
 	
-	identity_mapping = identity_overlay.map(0x20000000, 0x20000000, nsections, AllocationGranularity::Section);
+	identity_mapping = identity_overlay.map(MMIO_BASE, MMIO_BASE, nsections, AllocationGranularity::Section);
 	if (identity_mapping.is_error()){
 		uart_puts("Failed to map identity\r\n");
 		panic(PanicCodes::AssertionFailure);
@@ -144,9 +147,9 @@ void loader_main(uint32_t r0, uint32_t r1, void * atags, uint32_t cpsr_saved)
 	
 	void *entry_address;
 	
-	//elf_parse_header((void*)&_binary_kernel_stripped_elf_start);
+	//elf_parse_header((void*)&_binary_bin_kernel_stripped_elf_start);
 	
-	if (!load_elf((void*)&_binary_kernel_stripped_elf_start, supervisor_table, &entry_address)){
+	if (!load_elf((void*)&_binary_bin_kernel_stripped_elf_start, supervisor_table, &entry_address)){
 		uart_puts("Failed to load kernel\r\n");
 		panic(PanicCodes::AssertionFailure);
 	}

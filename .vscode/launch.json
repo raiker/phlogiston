@@ -1,0 +1,27 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "gdb",
+			"request": "attach",
+			"name": "Loader context",
+			"executable": "./src/bin/loader.elf",
+			"gdbpath": "D:/rust-osdev-env/bin/arm-eabi-gdb.exe",
+			"launchCompleteCommand": "None",
+			"target": ":1234",
+			"remote": true,
+			"cwd": "${workspaceRoot}"
+		},
+		{
+			"type": "gdb",
+			"request": "attach",
+			"name": "Kernel context",
+			"executable": "./src/bin/kernel.elf",
+			"gdbpath": "D:/rust-osdev-env/bin/arm-eabi-gdb.exe",
+			"launchCompleteCommand": "None",
+			"target": ":1234",
+			"remote": true,
+			"cwd": "${workspaceRoot}"
+		}
+	]
+}
