@@ -1,0 +1,6 @@
+[package]
+name = "sysiface"
+version = "0.1.0"
+authors = ["Joshua Weberruss <joshua.weberruss@gmail.com>"]
+
+[dependencies]

@@ -2,6 +2,9 @@
 #include "mmio.h"
 #include "sys_timer.h"
 
+#include "syscalls.inc"
+;
+
 extern "C"
 uint32_t svc_entry(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
 	uart_puts("System call from higher-half!\r\n");
