@@ -3,29 +3,32 @@
 
 use core::prelude::v1::*;
 
+#[repr(usize)]
+include!{"../../../src/syscalls.inc"} //the same enum is used in C++ and Rust
+
+#[cfg(any(target_arch = "arm"))]
+unsafe fn syscall(method: SysCallMethod, a: usize, b: usize, c: usize) -> (usize, usize) {
+	let r0: usize;
+	let r1: usize;
+
+	asm!("svc #0"
+		: "={r0}"(r0), "={r1}"(r1)
+		: "{r3}"(method as usize), "{r0}"(a), "{r1}"(b), "{r2}"(c)
+		:
+		: "volatile"
+	);
+
+	(r0, r1)
+}
+
+pub struct Time(i64);
+
 pub struct Handle {
 	id: u32,
 }
 
 pub struct Channel {
 	handle: Handle,
-}
-
-#[repr(usize)]
-include!{"../../../src/syscalls.inc"} //the same enum is used in C++ and Rust
-
-#[cfg(any(target_arch = "arm"))]
-unsafe fn syscall(method: SysCallMethod, a: usize, b: usize, c: usize) -> isize {
-	let retval: isize;
-
-	asm!("svc #0"
-		: "={r0}"(retval)
-		: "{r0}"(method as usize), "{r1}"(a), "{r2}"(b), "{r3}"(c)
-		:
-		: "volatile"
-	);
-
-	retval
 }
 
 #[deprecated]
@@ -35,20 +38,20 @@ pub fn klog_print(msg: &str) {
 	}
 }
 
-pub fn get_time() -> i64 {
-	let mut time_val: i64 = 0;
-	unsafe {
-		syscall(SysCallMethod::GetTime, &mut time_val as *mut i64 as usize, 0, 0);
-	}
-	time_val
+pub fn get_time() -> Time {
+	let (r0, r1) = unsafe {
+		syscall(SysCallMethod::GetTime, 0, 0, 0)
+	};
+	let combined_val = ((r1 as u64) << 32) | (r0 as u64);
+	Time(combined_val as i64)
 }
 
 pub fn request_channel(name: &str) -> Option<Channel> {
-	let handle_id: isize = unsafe {
+	let (retval, handle_id) = unsafe {
 		syscall(SysCallMethod::RequestChannel, name.as_ptr() as usize, name.len(), 0)
 	};
 
-	if handle_id < 0 {
+	if retval != 0 {
 		None
 	} else {
 		Some(Channel { handle: Handle {id: handle_id as u32}})
@@ -58,7 +61,59 @@ pub fn request_channel(name: &str) -> Option<Channel> {
 impl Drop for Handle {
 	fn drop(&mut self) {
 		unsafe {
-			syscall(SysCallMethod::CloseHandle, self.id as usize, 0, 0);
+			let (retval, _) = syscall(SysCallMethod::CloseHandle, self.id as usize, 0, 0);
+			if retval != 0 {
+				panic!("Error closing handle");
+			}
+		}
+	}
+}
+
+pub fn abort(retval: isize) -> ! {
+	unsafe {
+		syscall(SysCallMethod::Abort, retval as usize, 0, 0);
+		unreachable!();
+	}
+}
+
+#[repr(C)]
+enum KernelErrorCodes {
+	NoError = 0,
+	NotAllowed,
+	InvalidHandle,
+	Cancelled,
+	TimedOut,
+	Interrupted,
+}
+
+pub enum HandleError {
+	InvalidHandle,
+	NotAllowed,
+}
+
+pub enum WaitError {
+	Cancelled,
+	TimedOut,
+	Interrupted,
+	HandleError(HandleError),
+	Unknown,
+}
+
+impl Handle {
+	pub fn wait(&self, mask: u32) -> Result<u32, WaitError> {
+		let (retval, signals) = unsafe {
+			syscall(SysCallMethod::WaitOne, self.id as usize, mask as usize, 0)
+		};
+
+		let kec = unsafe {core::mem::transmute::<usize, KernelErrorCodes>(retval)};
+
+		match kec {
+			KernelErrorCodes::NoError => Ok(signals as u32),
+			KernelErrorCodes::NotAllowed => Err(WaitError::HandleError(HandleError::NotAllowed)),
+			KernelErrorCodes::InvalidHandle => Err(WaitError::HandleError(HandleError::InvalidHandle)),
+			KernelErrorCodes::Cancelled => Err(WaitError::Cancelled),
+			KernelErrorCodes::Interrupted => Err(WaitError::Interrupted),
+			_ => Err(WaitError::Unknown)
 		}
 	}
 }

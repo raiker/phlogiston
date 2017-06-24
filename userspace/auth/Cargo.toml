@@ -1,0 +1,9 @@
+[package]
+name = "auth"
+version = "0.1.0"
+authors = ["Joshua Weberruss <joshua.weberruss@gmail.com>"]
+
+[dependencies]
+sysiface = {
+	path = "../sysiface"
+}
