@@ -3,6 +3,9 @@
 
 use core::prelude::v1::*;
 
+#[macro_use]
+extern crate bitflags;
+
 #[repr(usize)]
 include!{"../../../src/syscalls.inc"} //the same enum is used in C++ and Rust
 
@@ -28,6 +31,14 @@ pub struct Handle {
 }
 
 pub struct Channel {
+	handle: Handle,
+}
+
+pub struct ChannelListener {
+	handle: Handle,
+}
+
+pub struct PollSet {
 	handle: Handle,
 }
 
@@ -58,14 +69,15 @@ pub fn request_channel(name: &str) -> Option<Channel> {
 	}
 }
 
-impl Drop for Handle {
-	fn drop(&mut self) {
-		unsafe {
-			let (retval, _) = syscall(SysCallMethod::CloseHandle, self.id as usize, 0, 0);
-			if retval != 0 {
-				panic!("Error closing handle");
-			}
-		}
+pub fn register_channel_listener(name: &str) -> Option<ChannelListener> {
+	let (retval, handle_id) = unsafe {
+		syscall(SysCallMethod::RegisterChannelListener, name.as_ptr() as usize, name.len(), 0)
+	};
+
+	if retval != 0 {
+		None
+	} else {
+		Some(ChannelListener { handle: Handle {id: handle_id as u32}})
 	}
 }
 
@@ -99,6 +111,22 @@ pub enum WaitError {
 	Unknown,
 }
 
+trait Waitable {
+	fn wait(&self, mask: u32) -> Result<u32, WaitError>;
+}
+
+impl Waitable for Channel {
+
+}
+
+impl Waitable for ChannelListener {
+
+}
+
+impl Waitable for PollSet {
+
+}
+
 impl Handle {
 	pub fn wait(&self, mask: u32) -> Result<u32, WaitError> {
 		let (retval, signals) = unsafe {
@@ -115,6 +143,28 @@ impl Handle {
 			KernelErrorCodes::Interrupted => Err(WaitError::Interrupted),
 			_ => Err(WaitError::Unknown)
 		}
+	}
+}
+
+//this depends on mallocing, so it'll have to be moved out of here
+impl PollSet {
+	pub fn add(&mut self, )
+}
+
+impl Drop for Handle {
+	fn drop(&mut self) {
+		unsafe {
+			let (retval, _) = syscall(SysCallMethod::CloseHandle, self.id as usize, 0, 0);
+			if retval != 0 {
+				panic!("Error closing handle");
+			}
+		}
+	}
+}
+
+impl ChannelListener {
+	pub fn accept(&self) -> Option<Channel> {
+
 	}
 }
 

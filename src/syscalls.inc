@@ -1,8 +1,13 @@
 enum SysCallMethod {
-	KlogPrint = 1,
-	GetTime = 2,
-	RequestChannel = 3,
-	CloseHandle = 4,
-	Abort = 5,
-	WaitOne = 6,
+	Abort,
+	CloseHandle,
+	WaitOne,
+	
+	KlogPrint,
+	GetTime,
+
+	RequestChannel,
+
+	RegisterChannelListener,
+	ChannelListenerAccept,
 }
